@@ -1,0 +1,38 @@
+# Loxone2Velux Gateway Configuration
+
+# KLF-200 Connection Settings
+klf200:
+  # IP address or hostname of the KLF-200 gateway
+  host: "192.168.1.100"
+
+  # WebSocket port (default: 51200)
+  port: 51200
+
+  # WiFi password of the KLF-200 (found on the back of the device)
+  password: "your-klf200-password"
+
+  # Reconnect interval when connection is lost
+  reconnect_interval: 30s
+
+  # How often to refresh node information
+  refresh_interval: 5m
+
+# HTTP Server Settings
+server:
+  # IP address to bind to (0.0.0.0 = all interfaces)
+  host: "0.0.0.0"
+
+  # Port for the REST API
+  port: 8080
+
+  # Request timeout
+  read_timeout: 15s
+  write_timeout: 15s
+
+# Logging Settings
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+
+  # Output format: console or json
+  format: "console"

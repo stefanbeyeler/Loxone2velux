@@ -1,0 +1,437 @@
+package klf200
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"fmt"
+	"net/url"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/rs/zerolog"
+)
+
+// Client represents a connection to a KLF-200 gateway
+type Client struct {
+	host     string
+	port     int
+	password string
+	logger   zerolog.Logger
+
+	conn          *websocket.Conn
+	connMu        sync.Mutex
+	connected     atomic.Bool
+	authenticated atomic.Bool
+
+	sessionID atomic.Uint32
+
+	// Callbacks
+	onNodeUpdate   func(*Node)
+	onDisconnect   func(error)
+
+	// Read buffer
+	readBuf bytes.Buffer
+	readMu  sync.Mutex
+
+	// Response channels
+	responseChan  chan *Frame
+	stopChan      chan struct{}
+	wg            sync.WaitGroup
+}
+
+// ClientConfig holds configuration for the KLF-200 client
+type ClientConfig struct {
+	Host     string
+	Port     int
+	Password string
+	Logger   zerolog.Logger
+}
+
+// NewClient creates a new KLF-200 client
+func NewClient(cfg ClientConfig) *Client {
+	return &Client{
+		host:         cfg.Host,
+		port:         cfg.Port,
+		password:     cfg.Password,
+		logger:       cfg.Logger,
+		responseChan: make(chan *Frame, 100),
+		stopChan:     make(chan struct{}),
+	}
+}
+
+// SetNodeUpdateCallback sets the callback for node updates
+func (c *Client) SetNodeUpdateCallback(cb func(*Node)) {
+	c.onNodeUpdate = cb
+}
+
+// SetDisconnectCallback sets the callback for disconnection
+func (c *Client) SetDisconnectCallback(cb func(error)) {
+	c.onDisconnect = cb
+}
+
+// Connect establishes connection to the KLF-200
+func (c *Client) Connect(ctx context.Context) error {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	if c.connected.Load() {
+		return nil
+	}
+
+	// Build WebSocket URL
+	u := url.URL{
+		Scheme: "wss",
+		Host:   fmt.Sprintf("%s:%d", c.host, c.port),
+		Path:   "/api/v1/websocket",
+	}
+
+	c.logger.Info().Str("url", u.String()).Msg("Connecting to KLF-200")
+
+	// Configure TLS (KLF-200 uses self-signed certificate)
+	dialer := websocket.Dialer{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // KLF-200 uses self-signed cert
+		},
+		HandshakeTimeout: 10 * time.Second,
+	}
+
+	// Connect
+	conn, _, err := dialer.DialContext(ctx, u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("failed to connect to KLF-200: %w", err)
+	}
+
+	c.conn = conn
+	c.connected.Store(true)
+
+	// Start reader goroutine
+	c.wg.Add(1)
+	go c.readLoop()
+
+	c.logger.Info().Msg("Connected to KLF-200")
+
+	return nil
+}
+
+// Authenticate authenticates with the KLF-200
+func (c *Client) Authenticate(ctx context.Context) error {
+	if !c.connected.Load() {
+		return fmt.Errorf("not connected")
+	}
+
+	c.logger.Debug().Msg("Authenticating with KLF-200")
+
+	// Send password
+	frame := BuildPasswordEnterRequest(c.password)
+	if err := c.sendRaw(frame); err != nil {
+		return fmt.Errorf("failed to send password: %w", err)
+	}
+
+	// Wait for response
+	resp, err := c.waitForResponse(ctx, GW_PASSWORD_ENTER_CFM, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("authentication timeout: %w", err)
+	}
+
+	ok, err := ParsePasswordConfirm(resp.Data)
+	if err != nil {
+		return fmt.Errorf("failed to parse auth response: %w", err)
+	}
+
+	if !ok {
+		return fmt.Errorf("authentication failed: invalid password")
+	}
+
+	c.authenticated.Store(true)
+	c.logger.Info().Msg("Authenticated with KLF-200")
+
+	// Enable house status monitor
+	if err := c.enableHouseStatusMonitor(ctx); err != nil {
+		c.logger.Warn().Err(err).Msg("Failed to enable house status monitor")
+	}
+
+	return nil
+}
+
+// enableHouseStatusMonitor enables notifications for position changes
+func (c *Client) enableHouseStatusMonitor(ctx context.Context) error {
+	frame := BuildHouseStatusMonitorEnableRequest()
+	if err := c.sendRaw(frame); err != nil {
+		return err
+	}
+
+	_, err := c.waitForResponse(ctx, GW_HOUSE_STATUS_MONITOR_ENABLE_CFM, 5*time.Second)
+	return err
+}
+
+// GetAllNodes retrieves all nodes from the KLF-200
+func (c *Client) GetAllNodes(ctx context.Context) ([]*Node, error) {
+	if !c.authenticated.Load() {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	c.logger.Debug().Msg("Getting all nodes")
+
+	frame := BuildGetAllNodesRequest()
+	if err := c.sendRaw(frame); err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	// Wait for confirmation
+	_, err := c.waitForResponse(ctx, GW_GET_ALL_NODES_INFORMATION_CFM, 5*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get confirmation: %w", err)
+	}
+
+	// Collect node notifications
+	var nodes []*Node
+	for {
+		resp, err := c.waitForResponse(ctx, 0, 5*time.Second) // Accept any response
+		if err != nil {
+			return nodes, nil // Timeout means no more nodes
+		}
+
+		switch resp.Command {
+		case GW_GET_ALL_NODES_INFORMATION_NTF:
+			node, err := ParseNodeInformation(resp.Data)
+			if err != nil {
+				c.logger.Warn().Err(err).Msg("Failed to parse node info")
+				continue
+			}
+			node.LastUpdate = time.Now()
+			nodes = append(nodes, node)
+			c.logger.Debug().Uint8("id", node.ID).Str("name", node.Name).Msg("Found node")
+
+		case GW_GET_ALL_NODES_INFORMATION_FINISHED_NTF:
+			c.logger.Debug().Int("count", len(nodes)).Msg("Finished getting nodes")
+			return nodes, nil
+		}
+	}
+}
+
+// SetPosition sets the position of a node (0-100%)
+func (c *Client) SetPosition(ctx context.Context, nodeID uint8, percent float64) error {
+	if !c.authenticated.Load() {
+		return fmt.Errorf("not authenticated")
+	}
+
+	position := PercentToPosition(percent)
+	sessionID := uint16(c.sessionID.Add(1))
+
+	c.logger.Debug().
+		Uint8("node", nodeID).
+		Float64("percent", percent).
+		Uint16("position", position).
+		Msg("Setting position")
+
+	frame := BuildCommandSendRequest(
+		sessionID,
+		1, // User originated
+		PriorityUserLevel2,
+		[]uint8{nodeID},
+		position,
+		nil,
+	)
+
+	if err := c.sendRaw(frame); err != nil {
+		return fmt.Errorf("failed to send command: %w", err)
+	}
+
+	// Wait for confirmation
+	resp, err := c.waitForResponse(ctx, GW_COMMAND_SEND_CFM, 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("command timeout: %w", err)
+	}
+
+	_, status, err := ParseCommandSendConfirm(resp.Data)
+	if err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if status != StatusOK {
+		return fmt.Errorf("command failed with status: %d", status)
+	}
+
+	return nil
+}
+
+// Open fully opens a node (position 0%)
+func (c *Client) Open(ctx context.Context, nodeID uint8) error {
+	return c.SetPosition(ctx, nodeID, 0)
+}
+
+// Close fully closes a node (position 100%)
+func (c *Client) Close(ctx context.Context, nodeID uint8) error {
+	return c.SetPosition(ctx, nodeID, 100)
+}
+
+// Stop stops a node's movement
+func (c *Client) Stop(ctx context.Context, nodeID uint8) error {
+	if !c.authenticated.Load() {
+		return fmt.Errorf("not authenticated")
+	}
+
+	sessionID := uint16(c.sessionID.Add(1))
+
+	c.logger.Debug().Uint8("node", nodeID).Msg("Stopping node")
+
+	// Use current position to stop
+	frame := BuildCommandSendRequest(
+		sessionID,
+		1,
+		PriorityUserLevel2,
+		[]uint8{nodeID},
+		PositionCurrent, // Keep current = stop
+		nil,
+	)
+
+	if err := c.sendRaw(frame); err != nil {
+		return fmt.Errorf("failed to send command: %w", err)
+	}
+
+	return nil
+}
+
+// sendRaw sends raw bytes to the KLF-200
+func (c *Client) sendRaw(data []byte) error {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	return c.conn.WriteMessage(websocket.BinaryMessage, data)
+}
+
+// waitForResponse waits for a specific response or any response if cmd is 0
+func (c *Client) waitForResponse(ctx context.Context, cmd CommandID, timeout time.Duration) (*Frame, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case frame := <-c.responseChan:
+			if cmd == 0 || frame.Command == cmd {
+				return frame, nil
+			}
+			// Put back other responses (or handle them)
+			c.handleAsyncFrame(frame)
+		}
+	}
+}
+
+// handleAsyncFrame handles frames that were not expected
+func (c *Client) handleAsyncFrame(frame *Frame) {
+	switch frame.Command {
+	case GW_NODE_STATE_POSITION_CHANGED_NTF:
+		nodeID, position, err := ParseNodeStatePositionChanged(frame.Data)
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("Failed to parse position change")
+			return
+		}
+		if c.onNodeUpdate != nil {
+			c.onNodeUpdate(&Node{
+				ID:              nodeID,
+				CurrentPosition: position,
+				PositionPercent: PositionToPercent(position),
+				LastUpdate:      time.Now(),
+			})
+		}
+	}
+}
+
+// readLoop continuously reads from the WebSocket
+func (c *Client) readLoop() {
+	defer c.wg.Done()
+
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		default:
+		}
+
+		c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
+		messageType, data, err := c.conn.ReadMessage()
+		if err != nil {
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				c.logger.Info().Msg("WebSocket closed normally")
+			} else {
+				c.logger.Error().Err(err).Msg("WebSocket read error")
+			}
+			c.handleDisconnect(err)
+			return
+		}
+
+		if messageType != websocket.BinaryMessage {
+			continue
+		}
+
+		frame, err := DecodeFrame(data)
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("Failed to decode frame")
+			continue
+		}
+
+		c.logger.Debug().
+			Uint16("cmd", uint16(frame.Command)).
+			Int("dataLen", len(frame.Data)).
+			Msg("Received frame")
+
+		select {
+		case c.responseChan <- frame:
+		default:
+			c.logger.Warn().Msg("Response channel full, dropping frame")
+		}
+	}
+}
+
+// handleDisconnect handles disconnection
+func (c *Client) handleDisconnect(err error) {
+	c.connected.Store(false)
+	c.authenticated.Store(false)
+
+	if c.onDisconnect != nil {
+		c.onDisconnect(err)
+	}
+}
+
+// Disconnect closes the connection
+func (c *Client) Disconnect() error {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	close(c.stopChan)
+
+	if c.conn != nil {
+		err := c.conn.Close()
+		c.conn = nil
+		c.connected.Store(false)
+		c.authenticated.Store(false)
+		return err
+	}
+
+	return nil
+}
+
+// IsConnected returns true if connected
+func (c *Client) IsConnected() bool {
+	return c.connected.Load()
+}
+
+// IsAuthenticated returns true if authenticated
+func (c *Client) IsAuthenticated() bool {
+	return c.authenticated.Load()
+}
+
+// Wait waits for the client to finish
+func (c *Client) Wait() {
+	c.wg.Wait()
+}
