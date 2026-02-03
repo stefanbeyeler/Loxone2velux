@@ -3,7 +3,11 @@ package api
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -102,5 +106,74 @@ func (s *Server) setupRoutes() *chi.Mux {
 		r.Get("/node/{nodeID}/stop", h.LoxoneStop)
 	})
 
+	// Static files for web frontend
+	staticDir := "./web/dist"
+	if _, err := os.Stat(staticDir); err == nil {
+		s.logger.Info().Str("dir", staticDir).Msg("Serving static files")
+		fileServer(r, "/", http.Dir(staticDir))
+	} else {
+		s.logger.Debug().Msg("No static files directory found, skipping frontend")
+	}
+
 	return r
+}
+
+// fileServer sets up a http.FileServer handler to serve static files from a directory
+func fileServer(r chi.Router, path string, root http.FileSystem) {
+	if strings.ContainsAny(path, "{}*") {
+		panic("FileServer does not permit URL parameters.")
+	}
+
+	if path != "/" && path[len(path)-1] != '/' {
+		r.Get(path, http.RedirectHandler(path+"/", http.StatusMovedPermanently).ServeHTTP)
+		path += "/"
+	}
+	path += "*"
+
+	r.Get(path, func(w http.ResponseWriter, r *http.Request) {
+		rctx := chi.RouteContext(r.Context())
+		pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
+		fsPath := strings.TrimPrefix(r.URL.Path, pathPrefix)
+
+		// Try to open the file
+		f, err := root.Open(fsPath)
+		if err != nil {
+			// If file not found, serve index.html for SPA routing
+			if os.IsNotExist(err) {
+				indexPath := filepath.Join(".", "index.html")
+				if f, err = root.Open(indexPath); err != nil {
+					http.NotFound(w, r)
+					return
+				}
+			} else {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		defer f.Close()
+
+		// Check if it's a directory
+		stat, err := f.Stat()
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		if stat.IsDir() {
+			// Try to serve index.html from directory
+			indexPath := filepath.Join(fsPath, "index.html")
+			if f, err = root.Open(indexPath); err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			defer f.Close()
+			stat, _ = f.Stat()
+		}
+
+		// Serve the file
+		http.ServeContent(w, r, stat.Name(), stat.ModTime(), f.(fs.File).(interface {
+			Seek(offset int64, whence int) (int64, error)
+			Read(p []byte) (n int, err error)
+		}).(http.File))
+	})
 }

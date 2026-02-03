@@ -21,6 +21,10 @@ config.yaml
 # Claude
 .claude/
 
+# Node
+web/node_modules/
+web/dist/
+
 # Documentation
 *.md
 LICENSE

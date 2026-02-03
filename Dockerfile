@@ -1,4 +1,17 @@
-# Build stage
+# Frontend build stage
+FROM node:20-alpine AS frontend
+
+WORKDIR /web
+
+# Copy package files
+COPY web/package*.json ./
+RUN npm install
+
+# Copy source and build
+COPY web/ .
+RUN npm run build
+
+# Backend build stage
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
@@ -26,6 +39,9 @@ RUN apk add --no-cache ca-certificates tzdata
 
 # Copy binary from builder
 COPY --from=builder /loxone2velux /app/loxone2velux
+
+# Copy frontend from frontend builder
+COPY --from=frontend /web/dist /app/web/dist
 
 # Copy example config
 COPY config.example.yaml /app/config.example.yaml

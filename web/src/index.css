@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom slider styling */
+input[type="range"] {
+  @apply appearance-none bg-gray-700 rounded-full h-2 cursor-pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  @apply appearance-none w-4 h-4 bg-velux-blue rounded-full cursor-pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+  @apply w-4 h-4 bg-velux-blue rounded-full cursor-pointer border-0;
+}
+
+input[type="range"]:disabled {
+  @apply opacity-50 cursor-not-allowed;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  @apply w-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
