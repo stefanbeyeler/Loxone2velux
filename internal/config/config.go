@@ -30,6 +30,7 @@ type ServerConfig struct {
 	Port         int           `yaml:"port"`
 	ReadTimeout  time.Duration `yaml:"read_timeout"`
 	WriteTimeout time.Duration `yaml:"write_timeout"`
+	APIToken     string        `yaml:"api_token"`
 }
 
 // LoggingConfig holds logging settings
@@ -53,6 +54,7 @@ func DefaultConfig() *Config {
 			Port:         8080,
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
+			APIToken:     "",
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -103,6 +105,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		return fmt.Errorf("server.port must be between 1 and 65535")
+	}
+	if c.Server.APIToken == "" {
+		return fmt.Errorf("server.api_token is required for security")
+	}
+	if len(c.Server.APIToken) < 16 {
+		return fmt.Errorf("server.api_token must be at least 16 characters")
 	}
 	return nil
 }

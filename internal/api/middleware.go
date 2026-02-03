@@ -1,7 +1,9 @@
 package api
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -48,4 +50,39 @@ func CORSMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// TokenAuthMiddleware creates a middleware that validates API tokens
+// Token can be provided via:
+// - Header: Authorization: Bearer <token>
+// - Query parameter: ?token=<token>
+func NewTokenAuthMiddleware(token string, logger zerolog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			providedToken := ""
+
+			// Check Authorization header first
+			authHeader := r.Header.Get("Authorization")
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				providedToken = strings.TrimPrefix(authHeader, "Bearer ")
+			}
+
+			// Fall back to query parameter (easier for Loxone)
+			if providedToken == "" {
+				providedToken = r.URL.Query().Get("token")
+			}
+
+			// Validate token using constant-time comparison
+			if subtle.ConstantTimeCompare([]byte(providedToken), []byte(token)) != 1 {
+				logger.Warn().
+					Str("remote", r.RemoteAddr).
+					Str("path", r.URL.Path).
+					Msg("Unauthorized request - invalid token")
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

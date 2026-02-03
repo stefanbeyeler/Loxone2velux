@@ -1,0 +1,29 @@
+services:
+  loxone2velux:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: loxone2velux
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - TZ=Europe/Zurich
+    # Alternative: Use environment variables instead of config file
+    # environment:
+    #   - KLF200_HOST=192.168.1.100
+    #   - KLF200_PASSWORD=your-password
+    networks:
+      - loxone-net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  loxone-net:
+    driver: bridge

@@ -55,10 +55,11 @@ func main() {
 	// Create gateway service
 	gw := gateway.NewService(&cfg.KLF200, logger)
 
-	// Start gateway
+	// Start gateway (non-blocking, connects in background)
 	ctx := context.Background()
 	if err := gw.Start(ctx); err != nil {
-		logger.Fatal().Err(err).Msg("Failed to start gateway service")
+		// Don't fail - will retry in background
+		logger.Warn().Err(err).Msg("Initial KLF-200 connection failed, will retry in background")
 	}
 
 	// Create and start API server

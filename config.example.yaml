@@ -29,6 +29,13 @@ server:
   read_timeout: 15s
   write_timeout: 15s
 
+  # API Token for authentication (min. 16 characters)
+  # Generate with: openssl rand -hex 32
+  # Use in requests:
+  #   Header: Authorization: Bearer <token>
+  #   Query:  ?token=<token>
+  api_token: "change-me-to-a-secure-random-token"
+
 # Logging Settings
 logging:
   # Log level: debug, info, warn, error

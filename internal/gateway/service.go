@@ -53,9 +53,11 @@ func (s *Service) Start(ctx context.Context) error {
 	s.client.SetNodeUpdateCallback(s.handleNodeUpdate)
 	s.client.SetDisconnectCallback(s.handleDisconnect)
 
-	// Connect
+	// Try initial connection (non-blocking on failure)
+	var connectErr error
 	if err := s.connect(ctx); err != nil {
-		return err
+		connectErr = err
+		s.logger.Warn().Err(err).Msg("Initial connection failed, will retry in background")
 	}
 
 	// Start refresh loop
@@ -66,7 +68,7 @@ func (s *Service) Start(ctx context.Context) error {
 	s.wg.Add(1)
 	go s.reconnectLoop()
 
-	return nil
+	return connectErr
 }
 
 // connect establishes connection to KLF-200

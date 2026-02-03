@@ -73,10 +73,15 @@ func (s *Server) setupRoutes() *chi.Mux {
 	// Handlers
 	h := NewHandlers(s.gateway, s.logger)
 
-	// Routes
+	// Token auth middleware
+	tokenAuth := NewTokenAuthMiddleware(s.cfg.APIToken, s.logger)
+
+	// Public routes (no auth required)
 	r.Get("/health", h.Health)
 
+	// Protected API routes
 	r.Route("/api", func(r chi.Router) {
+		r.Use(tokenAuth)
 		r.Route("/nodes", func(r chi.Router) {
 			r.Get("/", h.ListNodes)
 			r.Get("/{nodeID}", h.GetNode)
@@ -87,8 +92,10 @@ func (s *Server) setupRoutes() *chi.Mux {
 		})
 	})
 
-	// Loxone-friendly endpoints (simple query parameters)
+	// Protected Loxone-friendly endpoints
+	// Token via query param: /loxone/node/1/open?token=YOUR_TOKEN
 	r.Route("/loxone", func(r chi.Router) {
+		r.Use(tokenAuth)
 		r.Get("/node/{nodeID}/set/{position}", h.LoxoneSetPosition)
 		r.Get("/node/{nodeID}/open", h.LoxoneOpen)
 		r.Get("/node/{nodeID}/close", h.LoxoneClose)
