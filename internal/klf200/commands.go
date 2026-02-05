@@ -2,6 +2,7 @@ package klf200
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -15,6 +16,11 @@ const (
 	SlipEscEsc  byte = 0xDD
 )
 
+// KLF200 protocol constants
+const (
+	ProtocolID byte = 0x00 // Protocol identifier for KLF-200
+)
+
 var (
 	ErrInvalidFrame    = errors.New("invalid frame")
 	ErrChecksumMismatch = errors.New("checksum mismatch")
@@ -22,10 +28,14 @@ var (
 )
 
 // EncodeFrame creates a SLIP-encoded frame from command and data
+// Frame structure: ProtocolID | Length | Command(2) | Data | CRC
 func EncodeFrame(cmd CommandID, data []byte) []byte {
 	buf := new(bytes.Buffer)
 
-	// Protocol length (excluding length byte itself and checksum)
+	// Protocol ID (always 0x00 for KLF-200)
+	buf.WriteByte(ProtocolID)
+
+	// Protocol length (command + data, excluding protocol ID, length byte, and checksum)
 	buf.WriteByte(byte(len(data) + 3))
 
 	// Command ID (big endian)
@@ -34,7 +44,7 @@ func EncodeFrame(cmd CommandID, data []byte) []byte {
 	// Data
 	buf.Write(data)
 
-	// Calculate checksum (XOR of all bytes)
+	// Calculate checksum (XOR of all bytes including protocol ID)
 	frame := buf.Bytes()
 	checksum := byte(0)
 	for _, b := range frame {
@@ -115,17 +125,18 @@ func slipDecode(data []byte) ([]byte, error) {
 }
 
 // DecodeFrame parses a SLIP-encoded frame
+// Frame structure: ProtocolID | Length | Command(2) | Data | CRC
 func DecodeFrame(raw []byte) (*Frame, error) {
 	data, err := slipDecode(raw)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(data) < 4 {
+	if len(data) < 5 { // ProtocolID + Length + Command(2) + CRC
 		return nil, ErrFrameTooShort
 	}
 
-	// Verify checksum
+	// Verify checksum (XOR of all bytes except last)
 	checksum := byte(0)
 	for _, b := range data[:len(data)-1] {
 		checksum ^= b
@@ -134,27 +145,40 @@ func DecodeFrame(raw []byte) (*Frame, error) {
 		return nil, ErrChecksumMismatch
 	}
 
-	// Parse frame
-	frameLen := data[0]
-	if int(frameLen) > len(data)-1 {
-		return nil, ErrInvalidFrame
+	// Verify protocol ID
+	if data[0] != ProtocolID {
+		return nil, fmt.Errorf("invalid protocol ID: %02x", data[0])
 	}
 
-	cmd := CommandID(binary.BigEndian.Uint16(data[1:3]))
+	// Parse frame
+	// data[0] = Protocol ID
+	// data[1] = Length (command + data length)
+	// data[2:4] = Command ID
+	// data[4:len-1] = Data
+	// data[len-1] = CRC
+	cmd := CommandID(binary.BigEndian.Uint16(data[2:4]))
 
 	frame := &Frame{
 		Command: cmd,
-		Data:    data[3 : len(data)-1],
+		Data:    data[4 : len(data)-1],
 	}
 
 	return frame, nil
 }
 
 // BuildPasswordEnterRequest creates a password authentication request
+// If the password is Base64-encoded (ends with == or has valid base64 chars), it will be decoded
 func BuildPasswordEnterRequest(password string) []byte {
 	// Password is max 32 bytes, padded with zeros
 	data := make([]byte, 32)
-	copy(data, []byte(password))
+
+	// Try to decode as Base64 if it looks like Base64
+	if decoded, err := base64.StdEncoding.DecodeString(password); err == nil && len(decoded) <= 32 {
+		copy(data, decoded)
+	} else {
+		copy(data, []byte(password))
+	}
+
 	return EncodeFrame(GW_PASSWORD_ENTER_REQ, data)
 }
 

@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
-	"net/url"
+	"io"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 )
 
@@ -21,7 +22,7 @@ type Client struct {
 	password string
 	logger   zerolog.Logger
 
-	conn          *websocket.Conn
+	conn          *tls.Conn
 	connMu        sync.Mutex
 	connected     atomic.Bool
 	authenticated atomic.Bool
@@ -29,17 +30,17 @@ type Client struct {
 	sessionID atomic.Uint32
 
 	// Callbacks
-	onNodeUpdate   func(*Node)
-	onDisconnect   func(error)
+	onNodeUpdate func(*Node)
+	onDisconnect func(error)
 
-	// Read buffer
+	// Read buffer for SLIP framing
 	readBuf bytes.Buffer
 	readMu  sync.Mutex
 
 	// Response channels
-	responseChan  chan *Frame
-	stopChan      chan struct{}
-	wg            sync.WaitGroup
+	responseChan chan *Frame
+	stopChan     chan struct{}
+	wg           sync.WaitGroup
 }
 
 // ClientConfig holds configuration for the KLF-200 client
@@ -81,28 +82,57 @@ func (c *Client) Connect(ctx context.Context) error {
 		return nil
 	}
 
-	// Build WebSocket URL
-	u := url.URL{
-		Scheme: "wss",
-		Host:   fmt.Sprintf("%s:%d", c.host, c.port),
-		Path:   "/api/v1/websocket",
+	// Reset stopChan if it was closed
+	select {
+	case <-c.stopChan:
+		c.stopChan = make(chan struct{})
+	default:
 	}
 
-	c.logger.Info().Str("url", u.String()).Msg("Connecting to KLF-200")
+	addr := fmt.Sprintf("%s:%d", c.host, c.port)
+	c.logger.Info().Str("addr", addr).Msg("Connecting to KLF-200")
 
-	// Configure TLS (KLF-200 uses self-signed certificate)
-	dialer := websocket.Dialer{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // KLF-200 uses self-signed cert
-		},
-		HandshakeTimeout: 10 * time.Second,
+	// Configure TLS with Velux CA certificate
+	// KLF-200 uses a self-signed certificate without proper CN/SAN
+	// We verify using the CA certificate but skip hostname verification
+	certPool := x509.NewCertPool()
+	certPool.AppendCertsFromPEM([]byte(VeluxCA))
+
+	tlsConfig := &tls.Config{
+		RootCAs:            certPool,
+		InsecureSkipVerify: true, // Skip hostname verification (no CN/SAN in cert)
+		MinVersion:         tls.VersionTLS12,
+		MaxVersion:         tls.VersionTLS12,
 	}
 
-	// Connect
-	conn, _, err := dialer.DialContext(ctx, u.String(), nil)
+	// Create dialer with timeout
+	dialer := &net.Dialer{
+		Timeout: 10 * time.Second,
+	}
+
+	// Connect with context
+	netConn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to KLF-200: %w", err)
 	}
+
+	// Wrap with TLS
+	conn := tls.Client(netConn, tlsConfig)
+
+	// Perform TLS handshake with timeout
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+	} else {
+		conn.SetDeadline(time.Now().Add(10 * time.Second))
+	}
+
+	if err := conn.Handshake(); err != nil {
+		netConn.Close()
+		return fmt.Errorf("TLS handshake failed: %w", err)
+	}
+
+	// Clear deadline
+	conn.SetDeadline(time.Time{})
 
 	c.conn = conn
 	c.connected.Store(true)
@@ -126,9 +156,16 @@ func (c *Client) Authenticate(ctx context.Context) error {
 
 	// Send password
 	frame := BuildPasswordEnterRequest(c.password)
+	c.logger.Debug().
+		Hex("frame", frame).
+		Int("len", len(frame)).
+		Str("password", c.password).
+		Msg("Sending password frame")
+
 	if err := c.sendRaw(frame); err != nil {
 		return fmt.Errorf("failed to send password: %w", err)
 	}
+	c.logger.Debug().Msg("Password frame sent")
 
 	// Wait for response
 	resp, err := c.waitForResponse(ctx, GW_PASSWORD_ENTER_CFM, 10*time.Second)
@@ -304,7 +341,8 @@ func (c *Client) sendRaw(data []byte) error {
 		return fmt.Errorf("not connected")
 	}
 
-	return c.conn.WriteMessage(websocket.BinaryMessage, data)
+	_, err := c.conn.Write(data)
+	return err
 }
 
 // waitForResponse waits for a specific response or any response if cmd is 0
@@ -346,9 +384,13 @@ func (c *Client) handleAsyncFrame(frame *Frame) {
 	}
 }
 
-// readLoop continuously reads from the WebSocket
+// readLoop continuously reads from the TLS connection and extracts SLIP frames
 func (c *Client) readLoop() {
 	defer c.wg.Done()
+
+	buf := make([]byte, 1024)
+	var frameBuf bytes.Buffer
+	inFrame := false
 
 	for {
 		select {
@@ -359,36 +401,53 @@ func (c *Client) readLoop() {
 
 		c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
-		messageType, data, err := c.conn.ReadMessage()
+		n, err := c.conn.Read(buf)
 		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				c.logger.Info().Msg("WebSocket closed normally")
+			if err == io.EOF {
+				c.logger.Info().Msg("Connection closed by KLF-200")
+			} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				// Read timeout is normal, continue
+				continue
 			} else {
-				c.logger.Error().Err(err).Msg("WebSocket read error")
+				c.logger.Error().Err(err).Msg("Read error")
 			}
 			c.handleDisconnect(err)
 			return
 		}
 
-		if messageType != websocket.BinaryMessage {
-			continue
-		}
+		// Process received bytes and extract SLIP frames
+		for i := 0; i < n; i++ {
+			b := buf[i]
 
-		frame, err := DecodeFrame(data)
-		if err != nil {
-			c.logger.Warn().Err(err).Msg("Failed to decode frame")
-			continue
-		}
+			if b == SlipEnd {
+				if inFrame && frameBuf.Len() > 0 {
+					// End of frame - process it
+					frameData := make([]byte, frameBuf.Len()+2)
+					frameData[0] = SlipEnd
+					copy(frameData[1:], frameBuf.Bytes())
+					frameData[len(frameData)-1] = SlipEnd
 
-		c.logger.Debug().
-			Uint16("cmd", uint16(frame.Command)).
-			Int("dataLen", len(frame.Data)).
-			Msg("Received frame")
+					frame, err := DecodeFrame(frameData)
+					if err != nil {
+						c.logger.Warn().Err(err).Msg("Failed to decode frame")
+					} else {
+						c.logger.Debug().
+							Uint16("cmd", uint16(frame.Command)).
+							Int("dataLen", len(frame.Data)).
+							Msg("Received frame")
 
-		select {
-		case c.responseChan <- frame:
-		default:
-			c.logger.Warn().Msg("Response channel full, dropping frame")
+						select {
+						case c.responseChan <- frame:
+						default:
+							c.logger.Warn().Msg("Response channel full, dropping frame")
+						}
+					}
+					frameBuf.Reset()
+				}
+				inFrame = true
+			} else if inFrame {
+				frameBuf.WriteByte(b)
+			}
 		}
 	}
 }
@@ -408,7 +467,13 @@ func (c *Client) Disconnect() error {
 	c.connMu.Lock()
 	defer c.connMu.Unlock()
 
-	close(c.stopChan)
+	// Safe close of stopChan (only close if not already closed)
+	select {
+	case <-c.stopChan:
+		// Already closed
+	default:
+		close(c.stopChan)
+	}
 
 	if c.conn != nil {
 		err := c.conn.Close()
