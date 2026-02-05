@@ -115,12 +115,43 @@ export function NodeCard({
             onMouseUp={handlePositionCommit}
             onTouchEnd={handlePositionCommit}
             className="w-full"
+            disabled={isExecuting}
           />
           {/* Visual indicator - labels depend on device type */}
           <div className="flex justify-between text-xs text-gray-500 mt-1">
             <span>{node.inverted ? 'Geschlossen' : 'Offen'}</span>
             <span>{node.inverted ? 'Offen' : 'Geschlossen'}</span>
           </div>
+        </div>
+
+        {/* Preset Position Buttons - percentage means "how open" */}
+        <div className="flex gap-2 mt-3">
+          {[25, 50, 75].map((openPercent) => {
+            // Convert "percentage open" to Velux position
+            // For inverted (window openers): 0=closed, 100=open → send as-is
+            // For non-inverted (shutters): 0=open, 100=closed → invert
+            const veluxPosition = node.inverted ? openPercent : 100 - openPercent;
+            // Current open percentage for highlighting
+            const currentOpenPercent = node.inverted ? node.position_percent : 100 - node.position_percent;
+
+            return (
+              <button
+                key={openPercent}
+                onClick={() => onSetPosition(node.id, veluxPosition)}
+                disabled={isExecuting}
+                className={`
+                  flex-1 py-1.5 text-sm rounded-lg transition-colors
+                  ${Math.abs(currentOpenPercent - openPercent) < 5
+                    ? 'bg-velux-blue text-white'
+                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  }
+                  disabled:opacity-50
+                `}
+              >
+                {openPercent}%
+              </button>
+            );
+          })}
         </div>
       </div>
 

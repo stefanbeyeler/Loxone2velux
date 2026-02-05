@@ -71,7 +71,10 @@ function Accordion({ title, children, defaultOpen = false }: AccordionProps) {
 }
 
 export function LoxoneGuide() {
-  const token = localStorage.getItem('api_token') || 'DEIN_TOKEN';
+  const token = localStorage.getItem('api_token');
+  const hasToken = token && token.length > 0;
+  // Show token suffix only if auth is enabled
+  const tokenSuffix = hasToken ? `?token=${token}` : '';
 
   return (
     <div className="space-y-6">
@@ -80,6 +83,13 @@ export function LoxoneGuide() {
         <p className="text-gray-400">
           Anleitung zur Einbindung der Velux-Geräte in Loxone über Virtual HTTP Outputs.
         </p>
+        {!hasToken && (
+          <div className="mt-3 p-3 bg-green-900/30 border border-green-700 rounded-lg">
+            <p className="text-sm text-green-400">
+              Authentifizierung ist deaktiviert. URLs können ohne <code className="bg-gray-900 px-1 rounded">?token=...</code> verwendet werden.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -103,31 +113,81 @@ export function LoxoneGuide() {
             <div className="space-y-4">
               <div>
                 <h4 className="font-medium text-white mb-2">Position setzen (0-100%)</h4>
-                <CodeBlock code={`/loxone/node/<ID>/set/<v>?token=${token}`} />
+                <CodeBlock code={`/loxone/node/<ID>/set/<v>${tokenSuffix}`} />
                 <p className="text-sm text-gray-400 mt-2">
-                  Ersetze <code>&lt;ID&gt;</code> mit der Geräte-ID und <code>&lt;v&gt;</code> mit dem Analogwert (0-100).
+                  Ersetze <code>&lt;ID&gt;</code> mit der Geräte-ID und <code>&lt;v&gt;</code> mit dem Analogwert.
                 </p>
+                <div className="mt-2 p-3 bg-gray-900 rounded-lg text-sm">
+                  <p className="text-yellow-400 font-medium mb-1">Position-Semantik (Velux Standard):</p>
+                  <ul className="text-gray-400 space-y-1">
+                    <li>• <code>0</code> = Vollständig geöffnet</li>
+                    <li>• <code>100</code> = Vollständig geschlossen</li>
+                    <li>• <code>50</code> = Halb geöffnet/geschlossen</li>
+                  </ul>
+                </div>
               </div>
 
               <div>
                 <h4 className="font-medium text-white mb-2">Öffnen</h4>
-                <CodeBlock code={`/loxone/node/<ID>/open?token=${token}`} />
+                <CodeBlock code={`/loxone/node/<ID>/open${tokenSuffix}`} />
               </div>
 
               <div>
                 <h4 className="font-medium text-white mb-2">Schließen</h4>
-                <CodeBlock code={`/loxone/node/<ID>/close?token=${token}`} />
+                <CodeBlock code={`/loxone/node/<ID>/close${tokenSuffix}`} />
               </div>
 
               <div>
                 <h4 className="font-medium text-white mb-2">Stoppen</h4>
-                <CodeBlock code={`/loxone/node/<ID>/stop?token=${token}`} />
+                <CodeBlock code={`/loxone/node/<ID>/stop${tokenSuffix}`} />
               </div>
             </div>
           </div>
         </Accordion>
 
-        <Accordion title="3. Beispiel: Fenster-Baustein">
+        <Accordion title="3. Sensor-Abfrage (Regen/Wind)">
+          <div className="space-y-4 text-gray-300">
+            <p>
+              Der KLF-200 kann den Status von Regen- und Windsensoren abfragen. Diese können als Virtual HTTP Input in Loxone eingebunden werden.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium text-white mb-2">Alle Sensoren (Format: regen;wind)</h4>
+                <CodeBlock code={`/loxone/sensors${tokenSuffix}`} />
+                <p className="text-sm text-gray-400 mt-2">
+                  Rückgabe: <code>0;0</code> (kein Regen, kein Wind) oder <code>1;0</code> (Regen erkannt) etc.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="font-medium text-white mb-2">Nur Regensensor</h4>
+                <CodeBlock code={`/loxone/sensors/rain${tokenSuffix}`} />
+                <p className="text-sm text-gray-400 mt-2">
+                  Rückgabe: <code>0</code> (trocken) oder <code>1</code> (Regen erkannt)
+                </p>
+              </div>
+
+              <div>
+                <h4 className="font-medium text-white mb-2">Nur Windsensor</h4>
+                <CodeBlock code={`/loxone/sensors/wind${tokenSuffix}`} />
+                <p className="text-sm text-gray-400 mt-2">
+                  Rückgabe: <code>0</code> (kein Wind) oder <code>1</code> (Wind erkannt)
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-gray-900 rounded-lg">
+              <p className="text-sm text-gray-400">
+                <span className="text-yellow-400 font-medium">Tipp:</span> In Loxone Config einen <strong>Virtual HTTP Input</strong> erstellen
+                und als Abfrageintervall z.B. 60 Sekunden einstellen. Die Werte können dann für Automatisierungen verwendet werden
+                (z.B. Fenster bei Regen automatisch schließen).
+              </p>
+            </div>
+          </div>
+        </Accordion>
+
+        <Accordion title="4. Beispiel: Fenster-Baustein">
           <div className="space-y-4 text-gray-300">
             <p>
               So verbindest du einen Jalousie-Baustein mit dem Gateway:
@@ -148,19 +208,19 @@ export function LoxoneGuide() {
                 <tbody className="font-mono">
                   <tr className="border-b border-gray-800">
                     <td className="py-2">AQ (Position)</td>
-                    <td className="py-2 text-velux-blue">/loxone/node/1/set/&lt;v&gt;?token=...</td>
+                    <td className="py-2 text-velux-blue">/loxone/node/0/set/&lt;v&gt;{hasToken && '?token=...'}</td>
                   </tr>
                   <tr className="border-b border-gray-800">
                     <td className="py-2">QU (Hoch)</td>
-                    <td className="py-2 text-velux-blue">/loxone/node/1/open?token=...</td>
+                    <td className="py-2 text-velux-blue">/loxone/node/0/open{hasToken && '?token=...'}</td>
                   </tr>
                   <tr className="border-b border-gray-800">
                     <td className="py-2">QD (Runter)</td>
-                    <td className="py-2 text-velux-blue">/loxone/node/1/close?token=...</td>
+                    <td className="py-2 text-velux-blue">/loxone/node/0/close{hasToken && '?token=...'}</td>
                   </tr>
                   <tr>
                     <td className="py-2">QS (Stopp)</td>
-                    <td className="py-2 text-velux-blue">/loxone/node/1/stop?token=...</td>
+                    <td className="py-2 text-velux-blue">/loxone/node/0/stop{hasToken && '?token=...'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -168,7 +228,7 @@ export function LoxoneGuide() {
           </div>
         </Accordion>
 
-        <Accordion title="4. REST API Referenz">
+        <Accordion title="5. REST API Referenz">
           <div className="space-y-4 text-gray-300">
             <p>Vollständige API-Endpunkte:</p>
 
@@ -212,22 +272,88 @@ export function LoxoneGuide() {
                     <td className="py-2">/api/nodes/&#123;id&#125;/close</td>
                     <td className="py-2 font-sans text-gray-400">Schließen</td>
                   </tr>
-                  <tr>
+                  <tr className="border-b border-gray-800">
                     <td className="py-2 text-yellow-400">POST</td>
                     <td className="py-2">/api/nodes/&#123;id&#125;/stop</td>
                     <td className="py-2 font-sans text-gray-400">Stoppen</td>
+                  </tr>
+                  <tr className="border-b border-gray-800">
+                    <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/api/sensors</td>
+                    <td className="py-2 font-sans text-gray-400">Sensor-Status (JSON)</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 text-yellow-400">POST</td>
+                    <td className="py-2">/api/sensors/refresh</td>
+                    <td className="py-2 font-sans text-gray-400">Sensoren aktualisieren</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <p className="text-sm text-gray-400">
-              Authentifizierung: <code className="bg-gray-900 px-2 py-0.5 rounded">Authorization: Bearer &#123;token&#125;</code> oder <code className="bg-gray-900 px-2 py-0.5 rounded">?token=&#123;token&#125;</code>
-            </p>
+            <h4 className="font-medium text-white mt-6 mb-2">Loxone-Endpoints (einfache Rückgabewerte)</h4>
+            <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left py-2 text-gray-400">Methode</th>
+                    <th className="text-left py-2 text-gray-400">Endpoint</th>
+                    <th className="text-left py-2 text-gray-400">Rückgabe</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  <tr className="border-b border-gray-800">
+                    <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/loxone/node/&#123;id&#125;/set/&#123;pos&#125;</td>
+                    <td className="py-2 font-sans text-gray-400">OK / ERROR</td>
+                  </tr>
+                  <tr className="border-b border-gray-800">
+                    <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/loxone/node/&#123;id&#125;/open</td>
+                    <td className="py-2 font-sans text-gray-400">OK / ERROR</td>
+                  </tr>
+                  <tr className="border-b border-gray-800">
+                    <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/loxone/node/&#123;id&#125;/close</td>
+                    <td className="py-2 font-sans text-gray-400">OK / ERROR</td>
+                  </tr>
+                  <tr className="border-b border-gray-800">
+                    <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/loxone/node/&#123;id&#125;/stop</td>
+                    <td className="py-2 font-sans text-gray-400">OK / ERROR</td>
+                  </tr>
+                  <tr className="border-b border-gray-800">
+                    <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/loxone/sensors</td>
+                    <td className="py-2 font-sans text-gray-400">regen;wind (0;0)</td>
+                  </tr>
+                  <tr className="border-b border-gray-800">
+                    <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/loxone/sensors/rain</td>
+                    <td className="py-2 font-sans text-gray-400">0 oder 1</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/loxone/sensors/wind</td>
+                    <td className="py-2 font-sans text-gray-400">0 oder 1</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {hasToken ? (
+              <p className="text-sm text-gray-400 mt-4">
+                Authentifizierung: <code className="bg-gray-900 px-2 py-0.5 rounded">Authorization: Bearer &#123;token&#125;</code> oder <code className="bg-gray-900 px-2 py-0.5 rounded">?token=&#123;token&#125;</code>
+              </p>
+            ) : (
+              <p className="text-sm text-green-400 mt-4">
+                Authentifizierung ist deaktiviert (kein api_token in config.yaml).
+              </p>
+            )}
           </div>
         </Accordion>
 
-        <Accordion title="5. Troubleshooting">
+        <Accordion title="6. Troubleshooting">
           <div className="space-y-4 text-gray-300">
             <div>
               <h4 className="font-medium text-white mb-2">Gateway nicht erreichbar</h4>
