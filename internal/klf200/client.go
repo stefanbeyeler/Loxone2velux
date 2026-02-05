@@ -273,26 +273,63 @@ func (c *Client) SetPosition(ctx context.Context, nodeID uint8, percent float64)
 		nil,
 	)
 
+	c.logger.Debug().
+		Hex("frame", frame).
+		Int("len", len(frame)).
+		Msg("Sending command frame")
+
 	if err := c.sendRaw(frame); err != nil {
 		return fmt.Errorf("failed to send command: %w", err)
 	}
 
-	// Wait for confirmation
-	resp, err := c.waitForResponse(ctx, GW_COMMAND_SEND_CFM, 5*time.Second)
-	if err != nil {
-		return fmt.Errorf("command timeout: %w", err)
-	}
+	// Wait for confirmation (GW_COMMAND_SEND_CFM) or error (GW_ERROR_NTF)
+	// Skip async notifications like GW_NODE_STATE_POSITION_CHANGED_NTF
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-	_, status, err := ParseCommandSendConfirm(resp.Data)
-	if err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
-	}
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("command timeout")
+		case resp := <-c.responseChan:
+			switch resp.Command {
+			case GW_ERROR_NTF:
+				errorCode := uint8(0)
+				if len(resp.Data) > 0 {
+					errorCode = resp.Data[0]
+				}
+				c.logger.Error().
+					Uint8("errorCode", errorCode).
+					Msg("KLF-200 returned error")
+				return fmt.Errorf("KLF-200 error: code %d", errorCode)
 
-	if status != StatusOK {
-		return fmt.Errorf("command failed with status: %d", status)
-	}
+			case GW_COMMAND_SEND_CFM:
+				sessionID, status, err := ParseCommandSendConfirm(resp.Data)
+				c.logger.Debug().
+					Uint16("sessionID", sessionID).
+					Uint8("status", uint8(status)).
+					Hex("data", resp.Data).
+					Msg("Received command confirmation")
+				if err != nil {
+					return fmt.Errorf("failed to parse response: %w", err)
+				}
+				// Status 0 = accepted, Status 1 = accepted but busy (command still executes)
+				if status > 1 {
+					return fmt.Errorf("command failed with status: %d", status)
+				}
+				if status == 1 {
+					c.logger.Debug().Msg("Command accepted (node busy)")
+				} else {
+					c.logger.Debug().Msg("Command confirmed")
+				}
+				return nil
 
-	return nil
+			default:
+				// Handle async notifications (position changes, etc.)
+				c.handleAsyncFrame(resp)
+			}
+		}
+	}
 }
 
 // Open fully opens a node (position 0%)

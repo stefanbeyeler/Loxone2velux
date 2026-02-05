@@ -9,6 +9,9 @@ import (
 type CommandID uint16
 
 const (
+	// Error notification
+	GW_ERROR_NTF CommandID = 0x0000
+
 	// Authentication
 	GW_PASSWORD_ENTER_REQ CommandID = 0x3000
 	GW_PASSWORD_ENTER_CFM CommandID = 0x3001

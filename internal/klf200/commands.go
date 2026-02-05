@@ -192,20 +192,21 @@ func BuildGetAllNodesRequest() []byte {
 }
 
 // BuildCommandSendRequest creates a command to control a node
-// Frame structure (66 bytes payload):
-// - SessionID: 2 bytes
-// - CommandOriginator: 1 byte
-// - PriorityLevel: 1 byte
-// - ParameterActive: 1 byte (bit 0 = main parameter active)
-// - FPI1: 1 byte (functional parameter indicator 1)
-// - FPI2: 1 byte (functional parameter indicator 2)
-// - MainParameter: 2 bytes
-// - FP1-FP16: 32 bytes (16 x 2 bytes)
-// - IndexArrayCount: 1 byte
-// - IndexArray: 20 bytes
-// - PriorityLevelLock: 2 bytes
-// - PL1-PL8: 8 bytes
-// - LockTime: 1 byte
+// Frame structure (66 bytes payload per pyvlx):
+// - SessionID: 2 bytes (index 0-1)
+// - CommandOriginator: 1 byte (index 2)
+// - PriorityLevel: 1 byte (index 3)
+// - ParameterActive: 1 byte (index 4) - bit 0 = main parameter active
+// - FPI1: 1 byte (index 5) - functional parameter indicator 1
+// - FPI2: 1 byte (index 6) - functional parameter indicator 2
+// - MainParameter: 2 bytes (index 7-8)
+// - FP1-FP16: 32 bytes (index 9-40, 16 x 2 bytes)
+// - IndexArrayCount: 1 byte (index 41)
+// - IndexArray: 20 bytes (index 42-61)
+// - PriorityLevelLock: 1 byte (index 62)
+// - PriorityLevelInfo: 2 bytes (index 63-64)
+// - LockTime: 1 byte (index 65)
+// Total: 66 bytes
 func BuildCommandSendRequest(sessionID uint16, commandOriginator uint8, priorityLevel Priority,
 	nodeIDs []uint8, mainParameter uint16, functionalParameters []uint16) []byte {
 
@@ -229,7 +230,7 @@ func BuildCommandSendRequest(sessionID uint16, commandOriginator uint8, priority
 	// FPI2 - Functional parameter indicator 2 (1 byte)
 	buf.WriteByte(0x00)
 
-	// Main parameter (2 bytes)
+	// Main parameter (2 bytes) - position value
 	binary.Write(buf, binary.BigEndian, mainParameter)
 
 	// Functional parameters FP1-FP16 (16 x 2 bytes = 32 bytes) - set to ignore
@@ -253,11 +254,11 @@ func BuildCommandSendRequest(sessionID uint16, commandOriginator uint8, priority
 		buf.WriteByte(0)
 	}
 
-	// Priority level lock (2 bytes) - 0 = no lock
-	buf.Write([]byte{0x00, 0x00})
+	// Priority level lock (1 byte) - 0 = no lock
+	buf.WriteByte(0x00)
 
-	// Lock priorities PL1-PL8 (8 bytes)
-	buf.Write(make([]byte, 8))
+	// Priority level info (2 bytes)
+	buf.Write([]byte{0x00, 0x00})
 
 	// Lock time (1 byte) - 0 = no lock
 	buf.WriteByte(0x00)
