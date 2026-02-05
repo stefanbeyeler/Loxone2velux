@@ -55,6 +55,11 @@ const (
 	GW_HOUSE_STATUS_MONITOR_ENABLE_CFM  CommandID = 0x0241
 	GW_HOUSE_STATUS_MONITOR_DISABLE_REQ CommandID = 0x0242
 	GW_HOUSE_STATUS_MONITOR_DISABLE_CFM CommandID = 0x0243
+
+	// Limitation status (sensors: rain, wind, etc.)
+	GW_GET_LIMITATION_STATUS_REQ CommandID = 0x0250
+	GW_GET_LIMITATION_STATUS_CFM CommandID = 0x0251
+	GW_LIMITATION_STATUS_NTF     CommandID = 0x0252
 )
 
 // NodeType represents the type of Velux device
@@ -312,3 +317,60 @@ const (
 	StatusErrorInvalidIndex ResponseStatus = 2
 	StatusErrorOutOfRange   ResponseStatus = 3
 )
+
+// LimitationType represents the originator of a limitation
+type LimitationType uint8
+
+const (
+	LimitationTypeNone           LimitationType = 0
+	LimitationTypeRain           LimitationType = 1
+	LimitationTypeWind           LimitationType = 2
+	LimitationTypeFrost          LimitationType = 3
+	LimitationTypeSun            LimitationType = 4
+	LimitationTypeTemperature    LimitationType = 5
+	LimitationTypeTime           LimitationType = 6
+	LimitationTypeUser           LimitationType = 7
+	LimitationTypeEmergency      LimitationType = 8
+	LimitationTypeUnknown        LimitationType = 255
+)
+
+func (l LimitationType) String() string {
+	switch l {
+	case LimitationTypeNone:
+		return "None"
+	case LimitationTypeRain:
+		return "Rain"
+	case LimitationTypeWind:
+		return "Wind"
+	case LimitationTypeFrost:
+		return "Frost"
+	case LimitationTypeSun:
+		return "Sun"
+	case LimitationTypeTemperature:
+		return "Temperature"
+	case LimitationTypeTime:
+		return "Time"
+	case LimitationTypeUser:
+		return "User"
+	case LimitationTypeEmergency:
+		return "Emergency"
+	default:
+		return "Unknown"
+	}
+}
+
+// LimitationStatus represents the limitation status for a node
+type LimitationStatus struct {
+	NodeID           uint8          `json:"node_id"`
+	MinValue         uint16         `json:"min_value"`
+	MaxValue         uint16         `json:"max_value"`
+	LimitationOrigin LimitationType `json:"limitation_origin"`
+	LimitationTime   uint8          `json:"limitation_time"` // in seconds
+}
+
+// SensorStatus represents the current sensor readings
+type SensorStatus struct {
+	RainDetected bool      `json:"rain_detected"`
+	WindDetected bool      `json:"wind_detected"`
+	LastUpdate   time.Time `json:"last_update"`
+}

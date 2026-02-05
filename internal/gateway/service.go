@@ -235,3 +235,24 @@ func (s *Service) StopNode(ctx context.Context, nodeID uint8) error {
 
 	return s.client.Stop(ctx, nodeID)
 }
+
+// GetSensorStatus returns the current sensor status
+func (s *Service) GetSensorStatus() klf200.SensorStatus {
+	return s.client.GetSensorStatus()
+}
+
+// RefreshSensorStatus queries the KLF-200 for current sensor/limitation status
+func (s *Service) RefreshSensorStatus(ctx context.Context) error {
+	if !s.client.IsAuthenticated() {
+		return fmt.Errorf("not connected to KLF-200")
+	}
+
+	// Get all node IDs
+	nodes := s.nodes.GetAllNodes()
+	nodeIDs := make([]uint8, len(nodes))
+	for i, n := range nodes {
+		nodeIDs[i] = n.ID
+	}
+
+	return s.client.RefreshSensorStatus(ctx, nodeIDs)
+}

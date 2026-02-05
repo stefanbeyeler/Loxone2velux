@@ -41,6 +41,10 @@ type Client struct {
 	responseChan chan *Frame
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
+
+	// Sensor status
+	sensorStatus   SensorStatus
+	sensorStatusMu sync.RWMutex
 }
 
 // ClientConfig holds configuration for the KLF-200 client
@@ -369,6 +373,96 @@ func (c *Client) Stop(ctx context.Context, nodeID uint8) error {
 	return nil
 }
 
+// GetLimitationStatus queries the limitation status for nodes (sensor data)
+func (c *Client) GetLimitationStatus(ctx context.Context, nodeIDs []uint8) ([]*LimitationStatus, error) {
+	if !c.authenticated.Load() {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	sessionID := uint16(c.sessionID.Add(1))
+
+	c.logger.Debug().Interface("nodes", nodeIDs).Msg("Getting limitation status")
+
+	// Request both min and max limitations
+	frame := BuildGetLimitationStatusRequest(sessionID, nodeIDs, 0) // 0 = min limitation
+	if err := c.sendRaw(frame); err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	// Wait for confirmation
+	_, err := c.waitForResponse(ctx, GW_GET_LIMITATION_STATUS_CFM, 5*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get confirmation: %w", err)
+	}
+
+	// Collect limitation notifications
+	var limitations []*LimitationStatus
+	for {
+		resp, err := c.waitForResponse(ctx, 0, 2*time.Second)
+		if err != nil {
+			// Timeout means no more notifications
+			break
+		}
+
+		if resp.Command == GW_LIMITATION_STATUS_NTF {
+			status, err := ParseLimitationStatusNotification(resp.Data)
+			if err != nil {
+				c.logger.Warn().Err(err).Msg("Failed to parse limitation status")
+				continue
+			}
+
+			c.logger.Debug().
+				Uint8("nodeID", status.NodeID).
+				Uint8("origin", uint8(status.LimitationOrigin)).
+				Str("originStr", status.LimitationOrigin.String()).
+				Uint16("minValue", status.MinValue).
+				Uint16("maxValue", status.MaxValue).
+				Msg("Limitation status received")
+
+			limitations = append(limitations, status)
+
+			// Update sensor status based on limitation origin
+			c.updateSensorStatus(status)
+		}
+	}
+
+	return limitations, nil
+}
+
+// updateSensorStatus updates the internal sensor status based on limitation data
+func (c *Client) updateSensorStatus(status *LimitationStatus) {
+	c.sensorStatusMu.Lock()
+	defer c.sensorStatusMu.Unlock()
+
+	c.sensorStatus.LastUpdate = time.Now()
+
+	switch status.LimitationOrigin {
+	case LimitationTypeRain:
+		c.sensorStatus.RainDetected = true
+	case LimitationTypeWind:
+		c.sensorStatus.WindDetected = true
+	}
+
+	// If no limitation, sensors are clear
+	if status.LimitationOrigin == LimitationTypeNone {
+		c.sensorStatus.RainDetected = false
+		c.sensorStatus.WindDetected = false
+	}
+}
+
+// GetSensorStatus returns the current sensor status
+func (c *Client) GetSensorStatus() SensorStatus {
+	c.sensorStatusMu.RLock()
+	defer c.sensorStatusMu.RUnlock()
+	return c.sensorStatus
+}
+
+// RefreshSensorStatus queries all nodes for limitation status to update sensor readings
+func (c *Client) RefreshSensorStatus(ctx context.Context, nodeIDs []uint8) error {
+	_, err := c.GetLimitationStatus(ctx, nodeIDs)
+	return err
+}
+
 // sendRaw sends raw bytes to the KLF-200
 func (c *Client) sendRaw(data []byte) error {
 	c.connMu.Lock()
@@ -442,6 +536,20 @@ func (c *Client) handleAsyncFrame(frame *Frame) {
 			Uint8("runStatus", uint8(runStatus)).
 			Uint8("statusReply", uint8(statusReply)).
 			Msg("Command run status notification")
+
+		// Check for sensor-related limitations
+		c.sensorStatusMu.Lock()
+		c.sensorStatus.LastUpdate = time.Now()
+		switch statusReply {
+		case StatusReplyLimitationByRain:
+			c.sensorStatus.RainDetected = true
+			c.logger.Info().Msg("Rain sensor triggered - rain detected")
+		case StatusReplyLimitationByWind:
+			c.sensorStatus.WindDetected = true
+			c.logger.Info().Msg("Wind sensor triggered - wind detected")
+		}
+		c.sensorStatusMu.Unlock()
+
 		// Update state based on run status
 		var state NodeState
 		switch runStatus {
@@ -460,13 +568,25 @@ func (c *Client) handleAsyncFrame(frame *Frame) {
 				LastUpdate: time.Now(),
 			})
 		}
+
+	case GW_LIMITATION_STATUS_NTF:
+		status, err := ParseLimitationStatusNotification(frame.Data)
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("Failed to parse limitation status")
+			return
+		}
+		c.logger.Debug().
+			Uint8("nodeID", status.NodeID).
+			Str("origin", status.LimitationOrigin.String()).
+			Msg("Limitation status notification")
+		c.updateSensorStatus(status)
 	}
 }
 
 // isAsyncNotification returns true if the frame is an async notification that should be handled immediately
 func (c *Client) isAsyncNotification(cmd CommandID) bool {
 	switch cmd {
-	case GW_NODE_STATE_POSITION_CHANGED_NTF, GW_COMMAND_RUN_STATUS_NTF:
+	case GW_NODE_STATE_POSITION_CHANGED_NTF, GW_COMMAND_RUN_STATUS_NTF, GW_LIMITATION_STATUS_NTF:
 		return true
 	default:
 		return false

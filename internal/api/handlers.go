@@ -279,6 +279,63 @@ func (h *Handlers) LoxoneStop(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+// Sensor endpoints
+
+// GetSensorStatus returns the current sensor status (rain, wind, etc.)
+func (h *Handlers) GetSensorStatus(w http.ResponseWriter, r *http.Request) {
+	status := h.gateway.GetSensorStatus()
+	writeJSON(w, http.StatusOK, status)
+}
+
+// RefreshSensorStatus triggers a refresh of sensor data from the KLF-200
+func (h *Handlers) RefreshSensorStatus(w http.ResponseWriter, r *http.Request) {
+	if err := h.gateway.RefreshSensorStatus(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to refresh sensor status", err.Error())
+		return
+	}
+
+	status := h.gateway.GetSensorStatus()
+	writeJSON(w, http.StatusOK, status)
+}
+
+// Loxone-friendly sensor endpoints (return simple 0/1 values)
+
+// LoxoneSensorStatus returns all sensor values in Loxone-friendly format
+func (h *Handlers) LoxoneSensorStatus(w http.ResponseWriter, r *http.Request) {
+	status := h.gateway.GetSensorStatus()
+	rain := 0
+	wind := 0
+	if status.RainDetected {
+		rain = 1
+	}
+	if status.WindDetected {
+		wind = 1
+	}
+	// Format: rain;wind (e.g., "0;0" or "1;0")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(strconv.Itoa(rain) + ";" + strconv.Itoa(wind)))
+}
+
+// LoxoneRainStatus returns just the rain sensor value (0 or 1)
+func (h *Handlers) LoxoneRainStatus(w http.ResponseWriter, r *http.Request) {
+	status := h.gateway.GetSensorStatus()
+	if status.RainDetected {
+		w.Write([]byte("1"))
+	} else {
+		w.Write([]byte("0"))
+	}
+}
+
+// LoxoneWindStatus returns just the wind sensor value (0 or 1)
+func (h *Handlers) LoxoneWindStatus(w http.ResponseWriter, r *http.Request) {
+	status := h.gateway.GetSensorStatus()
+	if status.WindDetected {
+		w.Write([]byte("1"))
+	} else {
+		w.Write([]byte("0"))
+	}
+}
+
 // Helper functions
 
 func parseNodeID(r *http.Request) (uint8, error) {

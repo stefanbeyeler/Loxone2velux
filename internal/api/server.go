@@ -103,6 +103,10 @@ func (s *Server) setupRoutes() *chi.Mux {
 			r.Post("/{nodeID}/close", h.CloseNode)
 			r.Post("/{nodeID}/stop", h.StopNode)
 		})
+		r.Route("/sensors", func(r chi.Router) {
+			r.Get("/", h.GetSensorStatus)
+			r.Post("/refresh", h.RefreshSensorStatus)
+		})
 	})
 
 	// Loxone-friendly endpoints - protected only if token is configured
@@ -115,6 +119,9 @@ func (s *Server) setupRoutes() *chi.Mux {
 		r.Get("/node/{nodeID}/open", h.LoxoneOpen)
 		r.Get("/node/{nodeID}/close", h.LoxoneClose)
 		r.Get("/node/{nodeID}/stop", h.LoxoneStop)
+		r.Get("/sensors", h.LoxoneSensorStatus)
+		r.Get("/sensors/rain", h.LoxoneRainStatus)
+		r.Get("/sensors/wind", h.LoxoneWindStatus)
 	})
 
 	// Static files for web frontend

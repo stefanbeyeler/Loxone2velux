@@ -91,6 +91,13 @@ export interface PositionRequest {
   position: number;
 }
 
+// Sensor status
+export interface SensorStatus {
+  rain_detected: boolean;
+  wind_detected: boolean;
+  last_update: string;
+}
+
 // Helper to get icon for node type
 export function getNodeTypeIcon(type: NodeType): string {
   switch (type) {

@@ -4,6 +4,7 @@ import {
   HealthResponse,
   CommandResponse,
   PositionRequest,
+  SensorStatus,
 } from '../types';
 
 // Get API token from localStorage (no prompt - handled by App.tsx)
@@ -87,6 +88,18 @@ export async function closeNode(id: number): Promise<CommandResponse> {
 // Stop node movement
 export async function stopNode(id: number): Promise<CommandResponse> {
   return fetchJSON<CommandResponse>(`/api/nodes/${id}/stop`, {
+    method: 'POST',
+  });
+}
+
+// Get sensor status (rain, wind, etc.)
+export async function getSensorStatus(): Promise<SensorStatus> {
+  return fetchJSON<SensorStatus>('/api/sensors');
+}
+
+// Refresh sensor status from KLF-200
+export async function refreshSensorStatus(): Promise<SensorStatus> {
+  return fetchJSON<SensorStatus>('/api/sensors/refresh', {
     method: 'POST',
   });
 }

@@ -426,3 +426,91 @@ func ParseRunStatusNotification(data []byte) (sessionID uint16, nodeID uint8, ru
 
 	return sessionID, nodeID, runStatus, statusReply, nil
 }
+
+// BuildGetLimitationStatusRequest creates a request to get limitation status for nodes
+// Frame structure:
+// - SessionID: 2 bytes
+// - IndexArrayCount: 1 byte
+// - IndexArray: 20 bytes (node IDs, padded with 0)
+// - ParameterID: 1 byte (0 = main parameter)
+// - LimitationType: 1 byte (0 = min limitation, 1 = max limitation)
+func BuildGetLimitationStatusRequest(sessionID uint16, nodeIDs []uint8, limitationType uint8) []byte {
+	buf := new(bytes.Buffer)
+
+	// Session ID (2 bytes)
+	binary.Write(buf, binary.BigEndian, sessionID)
+
+	// Index array count (1 byte)
+	buf.WriteByte(byte(len(nodeIDs)))
+
+	// Node IDs (max 20, padded with 0)
+	for _, id := range nodeIDs {
+		buf.WriteByte(id)
+	}
+	for i := len(nodeIDs); i < 20; i++ {
+		buf.WriteByte(0)
+	}
+
+	// Parameter ID (1 byte) - 0 = main parameter
+	buf.WriteByte(0x00)
+
+	// Limitation type (1 byte) - 0 = min, 1 = max
+	buf.WriteByte(limitationType)
+
+	return EncodeFrame(GW_GET_LIMITATION_STATUS_REQ, buf.Bytes())
+}
+
+// ParseLimitationStatusConfirm parses the confirmation of limitation status request
+func ParseLimitationStatusConfirm(data []byte) (sessionID uint16, status ResponseStatus, err error) {
+	if len(data) < 3 {
+		return 0, 0, ErrFrameTooShort
+	}
+
+	sessionID = binary.BigEndian.Uint16(data[0:2])
+	status = ResponseStatus(data[2])
+
+	return sessionID, status, nil
+}
+
+// ParseLimitationStatusNotification parses the limitation status notification
+// Frame structure:
+// - SessionID: 2 bytes @ 0
+// - NodeID: 1 byte @ 2
+// - ParameterID: 1 byte @ 3
+// - MinValue: 2 bytes @ 4
+// - MaxValue: 2 bytes @ 6
+// - LimitationOriginator: 1 byte @ 8
+// - LimitationTime: 1 byte @ 9
+func ParseLimitationStatusNotification(data []byte) (*LimitationStatus, error) {
+	if len(data) < 10 {
+		return nil, ErrFrameTooShort
+	}
+
+	status := &LimitationStatus{
+		NodeID:           data[2],
+		MinValue:         binary.BigEndian.Uint16(data[4:6]),
+		MaxValue:         binary.BigEndian.Uint16(data[6:8]),
+		LimitationOrigin: LimitationType(data[8]),
+		LimitationTime:   data[9],
+	}
+
+	return status, nil
+}
+
+// StatusReplyToLimitationType converts a StatusReply limitation code to LimitationType
+func StatusReplyToLimitationType(reply StatusReply) LimitationType {
+	switch reply {
+	case StatusReplyLimitationByRain:
+		return LimitationTypeRain
+	case StatusReplyLimitationByWind:
+		return LimitationTypeWind
+	case StatusReplyLimitationByTimer:
+		return LimitationTypeTime
+	case StatusReplyLimitationByUser, StatusReplyLimitationByLocalUser:
+		return LimitationTypeUser
+	case StatusReplyLimitationByEmergency:
+		return LimitationTypeEmergency
+	default:
+		return LimitationTypeUnknown
+	}
+}

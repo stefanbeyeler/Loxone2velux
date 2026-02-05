@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { NodeList } from './NodeList';
 import { LoxoneGuide } from './LoxoneGuide';
+import { SensorCard } from './SensorCard';
 import * as api from '../services/api';
-import { Node, HealthResponse } from '../types';
+import { Node, HealthResponse, SensorStatus } from '../types';
 import {
   Blinds,
   BookOpen,
@@ -28,7 +29,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [sensors, setSensors] = useState<SensorStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sensorsRefreshing, setSensorsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -36,19 +39,33 @@ export function Dashboard({ onLogout }: DashboardProps) {
     setError(null);
 
     try {
-      const [healthData, nodesData] = await Promise.all([
+      const [healthData, nodesData, sensorData] = await Promise.all([
         api.getHealth(),
         api.getNodes().catch(() => ({ nodes: [], count: 0 })),
+        api.getSensorStatus().catch(() => null),
       ]);
 
       setHealth(healthData);
       setNodes(nodesData.nodes || []);
+      if (sensorData) setSensors(sensorData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler beim Laden');
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const handleRefreshSensors = async () => {
+    setSensorsRefreshing(true);
+    try {
+      const sensorData = await api.refreshSensorStatus();
+      setSensors(sensorData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sensor-Abfrage fehlgeschlagen');
+    } finally {
+      setSensorsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -257,15 +274,25 @@ export function Dashboard({ onLogout }: DashboardProps) {
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 py-6">
         {activeTab === 'devices' && (
-          <NodeList
-            nodes={nodes}
-            loading={loading}
-            onSetPosition={handleSetPosition}
-            onOpen={handleOpen}
-            onClose={handleClose}
-            onStop={handleStop}
-            onRefresh={fetchData}
-          />
+          <div className="space-y-6">
+            {/* Sensor Status */}
+            <SensorCard
+              sensors={sensors}
+              onRefresh={handleRefreshSensors}
+              isRefreshing={sensorsRefreshing}
+            />
+
+            {/* Node List */}
+            <NodeList
+              nodes={nodes}
+              loading={loading}
+              onSetPosition={handleSetPosition}
+              onOpen={handleOpen}
+              onClose={handleClose}
+              onStop={handleStop}
+              onRefresh={fetchData}
+            />
+          </div>
         )}
 
         {activeTab === 'guide' && <LoxoneGuide />}
