@@ -167,14 +167,18 @@ func DecodeFrame(raw []byte) (*Frame, error) {
 }
 
 // BuildPasswordEnterRequest creates a password authentication request
-// If the password is Base64-encoded (ends with == or has valid base64 chars), it will be decoded
+// If the password starts with "base64:", the remainder will be decoded
 func BuildPasswordEnterRequest(password string) []byte {
 	// Password is max 32 bytes, padded with zeros
 	data := make([]byte, 32)
 
-	// Try to decode as Base64 if it looks like Base64
-	if decoded, err := base64.StdEncoding.DecodeString(password); err == nil && len(decoded) <= 32 {
-		copy(data, decoded)
+	// Only decode as Base64 if explicitly prefixed with "base64:"
+	if len(password) > 7 && password[:7] == "base64:" {
+		if decoded, err := base64.StdEncoding.DecodeString(password[7:]); err == nil && len(decoded) <= 32 {
+			copy(data, decoded)
+		} else {
+			copy(data, []byte(password))
+		}
 	} else {
 		copy(data, []byte(password))
 	}
@@ -288,9 +292,30 @@ func ParsePasswordConfirm(data []byte) (bool, error) {
 	return data[0] == 0, nil
 }
 
-// ParseNodeInformation parses node information from notification
+// ParseNodeInformation parses node information from GW_GET_ALL_NODES_INFORMATION_NTF
+// Frame structure (124 bytes):
+// - NodeID: 1 byte @ 0
+// - Order: 2 bytes @ 1
+// - Placement: 1 byte @ 3
+// - Name: 64 bytes @ 4 (null-terminated UTF-8)
+// - Velocity: 1 byte @ 68
+// - NodeTypeSubType: 2 bytes @ 69
+// - ProductGroup: 1 byte @ 71
+// - ProductType: 1 byte @ 72
+// - NodeVariation: 1 byte @ 73
+// - PowerMode: 1 byte @ 74
+// - BuildNumber: 1 byte @ 75
+// - Serial: 8 bytes @ 76
+// - State: 1 byte @ 84
+// - CurrentPosition: 2 bytes @ 85
+// - Target: 2 bytes @ 87
+// - FP1-FP4: 8 bytes @ 89
+// - RemainingTime: 2 bytes @ 97
+// - TimeStamp: 4 bytes @ 99
+// - NbrOfAlias: 1 byte @ 103
+// - AliasArray: 20 bytes @ 104
 func ParseNodeInformation(data []byte) (*Node, error) {
-	if len(data) < 127 {
+	if len(data) < 89 {
 		return nil, fmt.Errorf("node information too short: %d bytes", len(data))
 	}
 
@@ -298,40 +323,30 @@ func ParseNodeInformation(data []byte) (*Node, error) {
 		ID: data[0],
 	}
 
-	// Order (1 byte) - skip
-	// Placement (1 byte) - skip
-
-	// Name (64 bytes, null-terminated UTF-8)
-	nameEnd := 3
-	for i := 3; i < 67 && data[i] != 0; i++ {
+	// Name (64 bytes at offset 4, null-terminated UTF-8)
+	nameEnd := 4
+	for i := 4; i < 68 && data[i] != 0; i++ {
 		nameEnd = i + 1
 	}
-	node.Name = string(data[3:nameEnd])
+	node.Name = string(data[4:nameEnd])
 
-	// Velocity (1 byte at offset 67)
-	node.Velocity = Velocity(data[67])
+	// Velocity (1 byte at offset 68)
+	node.Velocity = Velocity(data[68])
 
-	// Node type (2 bytes at offset 68)
-	node.NodeType = NodeType(binary.BigEndian.Uint16(data[68:70]))
+	// Node type (2 bytes at offset 69)
+	node.NodeType = NodeType(binary.BigEndian.Uint16(data[69:71]))
 	node.NodeTypeStr = node.NodeType.String()
 
-	// Product group (1 byte) - skip
-	// Product type (1 byte) - skip
-	// Node variation (1 byte) - skip
-	// Power mode (1 byte) - skip
-	// Build number (1 byte) - skip
-	// Serial number (8 bytes) - skip
-
-	// State (1 byte at offset 82)
-	node.State = NodeState(data[82])
+	// State (1 byte at offset 84)
+	node.State = NodeState(data[84])
 	node.StateStr = node.State.String()
 
-	// Current position (2 bytes at offset 83)
-	node.CurrentPosition = binary.BigEndian.Uint16(data[83:85])
+	// Current position (2 bytes at offset 85)
+	node.CurrentPosition = binary.BigEndian.Uint16(data[85:87])
 	node.PositionPercent = PositionToPercent(node.CurrentPosition)
 
-	// Target position (2 bytes at offset 85)
-	node.TargetPosition = binary.BigEndian.Uint16(data[85:87])
+	// Target position (2 bytes at offset 87)
+	node.TargetPosition = binary.BigEndian.Uint16(data[87:89])
 	node.TargetPercent = PositionToPercent(node.TargetPosition)
 
 	return node, nil
