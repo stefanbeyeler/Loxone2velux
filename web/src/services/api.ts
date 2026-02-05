@@ -5,6 +5,7 @@ import {
   CommandResponse,
   PositionRequest,
   SensorStatus,
+  GatewayConfig,
 } from '../types';
 
 // Get API token from localStorage (no prompt - handled by App.tsx)
@@ -100,6 +101,28 @@ export async function getSensorStatus(): Promise<SensorStatus> {
 // Refresh sensor status from KLF-200
 export async function refreshSensorStatus(): Promise<SensorStatus> {
   return fetchJSON<SensorStatus>('/api/sensors/refresh', {
+    method: 'POST',
+  });
+}
+
+// Configuration API
+
+// Get current configuration
+export async function getConfig(): Promise<GatewayConfig> {
+  return fetchJSON<GatewayConfig>('/api/config');
+}
+
+// Update configuration
+export async function updateConfig(config: Partial<GatewayConfig>): Promise<GatewayConfig> {
+  return fetchJSON<GatewayConfig>('/api/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+}
+
+// Reconnect to KLF-200
+export async function reconnectGateway(): Promise<{ success: boolean; message: string }> {
+  return fetchJSON<{ success: boolean; message: string }>('/api/reconnect', {
     method: 'POST',
   });
 }

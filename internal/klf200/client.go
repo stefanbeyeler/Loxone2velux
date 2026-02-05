@@ -67,6 +67,19 @@ func NewClient(cfg ClientConfig) *Client {
 	}
 }
 
+// UpdateConfig updates the client configuration (should be disconnected first)
+func (c *Client) UpdateConfig(cfg ClientConfig) {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	c.host = cfg.Host
+	c.port = cfg.Port
+	c.password = cfg.Password
+	if cfg.Logger.GetLevel() != zerolog.Disabled {
+		c.logger = cfg.Logger
+	}
+}
+
 // SetNodeUpdateCallback sets the callback for node updates
 func (c *Client) SetNodeUpdateCallback(cb func(*Node)) {
 	c.onNodeUpdate = cb
@@ -458,9 +471,19 @@ func (c *Client) GetSensorStatus() SensorStatus {
 }
 
 // RefreshSensorStatus queries all nodes for limitation status to update sensor readings
+// Returns nil even on timeout - the sensor status will keep its last known values
 func (c *Client) RefreshSensorStatus(ctx context.Context, nodeIDs []uint8) error {
 	_, err := c.GetLimitationStatus(ctx, nodeIDs)
-	return err
+	if err != nil {
+		// Log the error but don't fail - limitation status may not be supported
+		// by all KLF-200 firmware versions or may timeout
+		c.logger.Warn().Err(err).Msg("Sensor status refresh failed, keeping previous values")
+		// Update last update time to indicate we tried
+		c.sensorStatusMu.Lock()
+		c.sensorStatus.LastUpdate = time.Now()
+		c.sensorStatusMu.Unlock()
+	}
+	return nil
 }
 
 // sendRaw sends raw bytes to the KLF-200

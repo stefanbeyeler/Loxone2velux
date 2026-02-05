@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { NodeList } from './NodeList';
 import { LoxoneGuide } from './LoxoneGuide';
 import { SensorCard } from './SensorCard';
+import { Settings } from './Settings';
 import * as api from '../services/api';
 import { Node, HealthResponse, SensorStatus } from '../types';
 import {
@@ -14,11 +15,12 @@ import {
   X,
   LogOut,
   Server,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 
 const VERSION = '1.0.0';
 
-type Tab = 'devices' | 'guide';
+type Tab = 'devices' | 'guide' | 'settings';
 
 interface DashboardProps {
   onLogout?: () => void;
@@ -125,6 +127,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const tabs = [
     { id: 'devices' as Tab, label: 'Geräte', icon: Blinds, count: nodes.length },
     { id: 'guide' as Tab, label: 'Loxone Anleitung', icon: BookOpen },
+    { id: 'settings' as Tab, label: 'Einstellungen', icon: SettingsIcon },
   ];
 
   return (
@@ -296,6 +299,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
         )}
 
         {activeTab === 'guide' && <LoxoneGuide />}
+
+        {activeTab === 'settings' && <Settings onConfigChange={fetchData} />}
       </main>
 
       {/* Footer */}

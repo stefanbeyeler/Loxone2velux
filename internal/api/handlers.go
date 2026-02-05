@@ -8,21 +8,31 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 
+	"github.com/stefanbeyeler/loxone2velux/internal/config"
 	"github.com/stefanbeyeler/loxone2velux/internal/gateway"
 	"github.com/stefanbeyeler/loxone2velux/internal/klf200"
 )
 
+// ConfigManager interface for configuration operations
+type ConfigManager interface {
+	GetConfig() *config.Config
+	UpdateConfig(cfg *config.Config) error
+	GetConfigPath() string
+}
+
 // Handlers holds all HTTP handlers
 type Handlers struct {
-	gateway *gateway.Service
-	logger  zerolog.Logger
+	gateway    *gateway.Service
+	logger     zerolog.Logger
+	configMgr  ConfigManager
 }
 
 // NewHandlers creates new handlers
-func NewHandlers(gw *gateway.Service, logger zerolog.Logger) *Handlers {
+func NewHandlers(gw *gateway.Service, logger zerolog.Logger, configMgr ConfigManager) *Handlers {
 	return &Handlers{
-		gateway: gw,
-		logger:  logger.With().Str("component", "handlers").Logger(),
+		gateway:   gw,
+		logger:    logger.With().Str("component", "handlers").Logger(),
+		configMgr: configMgr,
 	}
 }
 
@@ -334,6 +344,127 @@ func (h *Handlers) LoxoneWindStatus(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Write([]byte("0"))
 	}
+}
+
+// Configuration endpoints
+
+// ConfigResponse is the JSON structure for config API
+type ConfigResponse struct {
+	KLF200  ConfigKLF200  `json:"klf200"`
+	Server  ConfigServer  `json:"server"`
+	Logging ConfigLogging `json:"logging"`
+}
+
+type ConfigKLF200 struct {
+	Host              string `json:"host"`
+	Port              int    `json:"port"`
+	Password          string `json:"password"`
+	ReconnectInterval string `json:"reconnect_interval"`
+	RefreshInterval   string `json:"refresh_interval"`
+}
+
+type ConfigServer struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	APIToken string `json:"api_token"`
+}
+
+type ConfigLogging struct {
+	Level  string `json:"level"`
+	Format string `json:"format"`
+}
+
+// GetConfig returns the current configuration
+func (h *Handlers) GetConfig(w http.ResponseWriter, r *http.Request) {
+	if h.configMgr == nil {
+		writeError(w, http.StatusServiceUnavailable, "Configuration manager not available", "")
+		return
+	}
+
+	cfg := h.configMgr.GetConfig()
+	resp := ConfigResponse{
+		KLF200: ConfigKLF200{
+			Host:              cfg.KLF200.Host,
+			Port:              cfg.KLF200.Port,
+			Password:          cfg.KLF200.Password,
+			ReconnectInterval: cfg.KLF200.ReconnectInterval.String(),
+			RefreshInterval:   cfg.KLF200.RefreshInterval.String(),
+		},
+		Server: ConfigServer{
+			Host:     cfg.Server.Host,
+			Port:     cfg.Server.Port,
+			APIToken: cfg.Server.APIToken,
+		},
+		Logging: ConfigLogging{
+			Level:  cfg.Logging.Level,
+			Format: cfg.Logging.Format,
+		},
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// UpdateConfig updates the configuration
+func (h *Handlers) UpdateConfig(w http.ResponseWriter, r *http.Request) {
+	if h.configMgr == nil {
+		writeError(w, http.StatusServiceUnavailable, "Configuration manager not available", "")
+		return
+	}
+
+	var req ConfigResponse
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	// Get current config and update it
+	cfg := h.configMgr.GetConfig()
+
+	// Update KLF200 settings
+	if req.KLF200.Host != "" {
+		cfg.KLF200.Host = req.KLF200.Host
+	}
+	if req.KLF200.Port > 0 {
+		cfg.KLF200.Port = req.KLF200.Port
+	}
+	if req.KLF200.Password != "" {
+		cfg.KLF200.Password = req.KLF200.Password
+	}
+
+	// Update server settings (API token can be empty to disable auth)
+	cfg.Server.APIToken = req.Server.APIToken
+
+	// Update logging settings
+	if req.Logging.Level != "" {
+		cfg.Logging.Level = req.Logging.Level
+	}
+
+	// Save config
+	if err := h.configMgr.UpdateConfig(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save configuration", err.Error())
+		return
+	}
+
+	h.logger.Info().Msg("Configuration updated")
+
+	// Return updated config
+	h.GetConfig(w, r)
+}
+
+// Reconnect triggers a reconnection to the KLF-200
+func (h *Handlers) Reconnect(w http.ResponseWriter, r *http.Request) {
+	if err := h.gateway.Reconnect(r.Context()); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Reconnection initiated",
+	})
 }
 
 // Helper functions

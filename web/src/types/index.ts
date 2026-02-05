@@ -98,6 +98,26 @@ export interface SensorStatus {
   last_update: string;
 }
 
+// Configuration
+export interface GatewayConfig {
+  klf200: {
+    host: string;
+    port: number;
+    password: string;
+    reconnect_interval: string;
+    refresh_interval: string;
+  };
+  server: {
+    host: string;
+    port: number;
+    api_token: string;
+  };
+  logging: {
+    level: string;
+    format: string;
+  };
+}
+
 // Helper to get icon for node type
 export function getNodeTypeIcon(type: NodeType): string {
   switch (type) {

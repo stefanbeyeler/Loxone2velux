@@ -20,18 +20,20 @@ import (
 
 // Server represents the HTTP API server
 type Server struct {
-	cfg     *config.ServerConfig
-	gateway *gateway.Service
-	logger  zerolog.Logger
-	server  *http.Server
+	cfg       *config.ServerConfig
+	gateway   *gateway.Service
+	logger    zerolog.Logger
+	server    *http.Server
+	configMgr ConfigManager
 }
 
 // NewServer creates a new API server
-func NewServer(cfg *config.ServerConfig, gw *gateway.Service, logger zerolog.Logger) *Server {
+func NewServer(cfg *config.ServerConfig, gw *gateway.Service, logger zerolog.Logger, configMgr ConfigManager) *Server {
 	return &Server{
-		cfg:     cfg,
-		gateway: gw,
-		logger:  logger.With().Str("component", "api").Logger(),
+		cfg:       cfg,
+		gateway:   gw,
+		logger:    logger.With().Str("component", "api").Logger(),
+		configMgr: configMgr,
 	}
 }
 
@@ -75,7 +77,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 	r.Use(chimiddleware.Timeout(30 * time.Second))
 
 	// Handlers
-	h := NewHandlers(s.gateway, s.logger)
+	h := NewHandlers(s.gateway, s.logger, s.configMgr)
 
 	// Public routes (no auth required)
 	r.Get("/health", h.Health)
@@ -107,6 +109,10 @@ func (s *Server) setupRoutes() *chi.Mux {
 			r.Get("/", h.GetSensorStatus)
 			r.Post("/refresh", h.RefreshSensorStatus)
 		})
+		// Configuration endpoints
+		r.Get("/config", h.GetConfig)
+		r.Put("/config", h.UpdateConfig)
+		r.Post("/reconnect", h.Reconnect)
 	})
 
 	// Loxone-friendly endpoints - protected only if token is configured

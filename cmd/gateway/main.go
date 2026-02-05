@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -14,6 +15,66 @@ import (
 	"github.com/stefanbeyeler/loxone2velux/internal/config"
 	"github.com/stefanbeyeler/loxone2velux/internal/gateway"
 )
+
+// ConfigManager manages configuration with persistence
+type ConfigManager struct {
+	cfg        *config.Config
+	configPath string
+	gateway    *gateway.Service
+	mu         sync.RWMutex
+	logger     zerolog.Logger
+}
+
+// NewConfigManager creates a new ConfigManager
+func NewConfigManager(cfg *config.Config, configPath string, gw *gateway.Service, logger zerolog.Logger) *ConfigManager {
+	return &ConfigManager{
+		cfg:        cfg,
+		configPath: configPath,
+		gateway:    gw,
+		logger:     logger,
+	}
+}
+
+// GetConfig returns the current configuration
+func (m *ConfigManager) GetConfig() *config.Config {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cfg
+}
+
+// GetConfigPath returns the path to the config file
+func (m *ConfigManager) GetConfigPath() string {
+	return m.configPath
+}
+
+// UpdateConfig updates and saves the configuration
+func (m *ConfigManager) UpdateConfig(cfg *config.Config) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Validate
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+
+	// Save to file
+	if err := cfg.Save(m.configPath); err != nil {
+		m.logger.Error().Err(err).Msg("Failed to save config file")
+		// Continue anyway - config is updated in memory
+	} else {
+		m.logger.Info().Str("path", m.configPath).Msg("Configuration saved")
+	}
+
+	// Update gateway config if KLF-200 settings changed
+	if m.cfg.KLF200.Host != cfg.KLF200.Host ||
+		m.cfg.KLF200.Port != cfg.KLF200.Port ||
+		m.cfg.KLF200.Password != cfg.KLF200.Password {
+		m.gateway.UpdateConfig(&cfg.KLF200)
+	}
+
+	m.cfg = cfg
+	return nil
+}
 
 func main() {
 	// Parse command line flags
@@ -62,8 +123,11 @@ func main() {
 		logger.Warn().Err(err).Msg("Initial KLF-200 connection failed, will retry in background")
 	}
 
+	// Create config manager
+	configMgr := NewConfigManager(cfg, *configPath, gw, logger)
+
 	// Create and start API server
-	server := api.NewServer(&cfg.Server, gw, logger)
+	server := api.NewServer(&cfg.Server, gw, logger, configMgr)
 
 	// Start server in goroutine
 	go func() {

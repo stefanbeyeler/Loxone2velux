@@ -256,3 +256,37 @@ func (s *Service) RefreshSensorStatus(ctx context.Context) error {
 
 	return s.client.RefreshSensorStatus(ctx, nodeIDs)
 }
+
+// Reconnect disconnects and reconnects to the KLF-200
+func (s *Service) Reconnect(ctx context.Context) error {
+	s.logger.Info().Msg("Manual reconnect requested")
+
+	// Disconnect if connected
+	if s.client.IsConnected() {
+		s.client.Disconnect()
+	}
+
+	// Reconnect
+	if err := s.connect(ctx); err != nil {
+		return fmt.Errorf("reconnect failed: %w", err)
+	}
+
+	s.logger.Info().Msg("Reconnected successfully")
+	return nil
+}
+
+// UpdateConfig updates the KLF-200 configuration (requires reconnect)
+func (s *Service) UpdateConfig(cfg *config.KLF200Config) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cfg = cfg
+
+	// Update client config
+	clientCfg := klf200.ClientConfig{
+		Host:     cfg.Host,
+		Port:     cfg.Port,
+		Password: cfg.Password,
+		Logger:   s.logger.With().Str("component", "klf200-client").Logger(),
+	}
+	s.client.UpdateConfig(clientCfg)
+}
