@@ -45,6 +45,7 @@ export interface Node {
   target_percent: number;
   velocity: number;
   last_update: string;
+  inverted: boolean; // true for window openers (0%=closed, 100%=open)
 }
 
 // API Response types

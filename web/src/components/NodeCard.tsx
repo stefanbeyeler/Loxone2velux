@@ -38,8 +38,14 @@ export function NodeCard({
   };
 
   const isExecuting = node.state_str === 'Executing';
-  const isOpen = node.position_percent < 10;
-  const isClosed = node.position_percent > 90;
+  // For inverted types (window openers): 0% = closed, 100% = open
+  // For normal types (shutters): 0% = open, 100% = closed
+  const isOpen = node.inverted
+    ? node.position_percent > 90
+    : node.position_percent < 10;
+  const isClosed = node.inverted
+    ? node.position_percent < 10
+    : node.position_percent > 90;
 
   // Get icon based on type
   const getIcon = () => {
@@ -107,10 +113,10 @@ export function NodeCard({
             onTouchEnd={handlePositionCommit}
             className="w-full"
           />
-          {/* Visual indicator */}
+          {/* Visual indicator - labels depend on device type */}
           <div className="flex justify-between text-xs text-gray-500 mt-1">
-            <span>Offen</span>
-            <span>Geschlossen</span>
+            <span>{node.inverted ? 'Geschlossen' : 'Offen'}</span>
+            <span>{node.inverted ? 'Offen' : 'Geschlossen'}</span>
           </div>
         </div>
       </div>

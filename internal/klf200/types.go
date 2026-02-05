@@ -266,6 +266,15 @@ type Node struct {
 	TargetPercent   float64  `json:"target_percent"`
 	Velocity      Velocity   `json:"velocity"`
 	LastUpdate    time.Time  `json:"last_update"`
+	Inverted      bool       `json:"inverted"` // true for window openers (0%=closed, 100%=open)
+}
+
+// IsInvertedType returns true for node types where position semantics are inverted
+// For Velux/io-homecontrol: 0% = open, 100% = closed for all device types
+// (window openers, shutters, blinds all use the same semantics)
+func (t NodeType) IsInvertedType() bool {
+	// All Velux devices use: 0% = open, 100% = closed
+	return false
 }
 
 // PositionToPercent converts raw position (0-51200) to percentage (0-100)

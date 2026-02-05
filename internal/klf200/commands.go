@@ -350,6 +350,7 @@ func ParseNodeInformation(data []byte) (*Node, error) {
 	// Node type (2 bytes at offset 69)
 	node.NodeType = NodeType(binary.BigEndian.Uint16(data[69:71]))
 	node.NodeTypeStr = node.NodeType.String()
+	node.Inverted = node.NodeType.IsInvertedType()
 
 	// State (1 byte at offset 84)
 	node.State = NodeState(data[84])
