@@ -77,15 +77,24 @@ func (s *Server) setupRoutes() *chi.Mux {
 	// Handlers
 	h := NewHandlers(s.gateway, s.logger)
 
-	// Token auth middleware
-	tokenAuth := NewTokenAuthMiddleware(s.cfg.APIToken, s.logger)
-
 	// Public routes (no auth required)
 	r.Get("/health", h.Health)
 
-	// Protected API routes
+	// Auth status endpoint - tells frontend if auth is required
+	r.Get("/api/auth/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if s.cfg.APIToken == "" {
+			w.Write([]byte(`{"required":false}`))
+		} else {
+			w.Write([]byte(`{"required":true}`))
+		}
+	})
+
+	// API routes - protected only if token is configured
 	r.Route("/api", func(r chi.Router) {
-		r.Use(tokenAuth)
+		if s.cfg.APIToken != "" {
+			r.Use(NewTokenAuthMiddleware(s.cfg.APIToken, s.logger))
+		}
 		r.Route("/nodes", func(r chi.Router) {
 			r.Get("/", h.ListNodes)
 			r.Get("/{nodeID}", h.GetNode)
@@ -96,10 +105,12 @@ func (s *Server) setupRoutes() *chi.Mux {
 		})
 	})
 
-	// Protected Loxone-friendly endpoints
+	// Loxone-friendly endpoints - protected only if token is configured
 	// Token via query param: /loxone/node/1/open?token=YOUR_TOKEN
 	r.Route("/loxone", func(r chi.Router) {
-		r.Use(tokenAuth)
+		if s.cfg.APIToken != "" {
+			r.Use(NewTokenAuthMiddleware(s.cfg.APIToken, s.logger))
+		}
 		r.Get("/node/{nodeID}/set/{position}", h.LoxoneSetPosition)
 		r.Get("/node/{nodeID}/open", h.LoxoneOpen)
 		r.Get("/node/{nodeID}/close", h.LoxoneClose)

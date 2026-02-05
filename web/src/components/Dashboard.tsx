@@ -20,7 +20,7 @@ const VERSION = '1.0.0';
 type Tab = 'devices' | 'guide';
 
 interface DashboardProps {
-  onLogout: () => void;
+  onLogout?: () => void;
 }
 
 export function Dashboard({ onLogout }: DashboardProps) {
@@ -100,7 +100,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
   const handleLogout = () => {
     api.clearApiToken();
-    onLogout();
+    onLogout?.();
   };
 
   const isConnected = health?.connected ?? false;
@@ -155,14 +155,16 @@ export function Dashboard({ onLogout }: DashboardProps) {
                 <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
               </button>
 
-              {/* Logout Button */}
-              <button
-                onClick={handleLogout}
-                className="hidden sm:flex p-2 text-gray-400 hover:text-red-400 transition-colors"
-                title="Abmelden"
-              >
-                <LogOut size={20} />
-              </button>
+              {/* Logout Button - only show if auth is enabled */}
+              {onLogout && (
+                <button
+                  onClick={handleLogout}
+                  className="hidden sm:flex p-2 text-gray-400 hover:text-red-400 transition-colors"
+                  title="Abmelden"
+                >
+                  <LogOut size={20} />
+                </button>
+              )}
 
               {/* Mobile Menu Toggle */}
               <button
@@ -229,13 +231,15 @@ export function Dashboard({ onLogout }: DashboardProps) {
                   )}
                 </button>
               ))}
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-gray-700"
-              >
-                <LogOut size={20} />
-                Abmelden
-              </button>
+              {onLogout && (
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-gray-700"
+                >
+                  <LogOut size={20} />
+                  Abmelden
+                </button>
+              )}
             </nav>
           )}
         </div>

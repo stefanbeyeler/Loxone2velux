@@ -6,6 +6,7 @@ import { RefreshCw } from 'lucide-react';
 
 function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,7 +15,19 @@ function App() {
 
   const checkAuth = async () => {
     try {
-      // Check if we have a stored token and if it's valid
+      // First check if authentication is required at all
+      const response = await fetch('/api/auth/status');
+      const { required } = await response.json();
+      setAuthRequired(required);
+
+      if (!required) {
+        // No auth required, skip login
+        setAuthenticated(true);
+        setLoading(false);
+        return;
+      }
+
+      // Auth is required - check if we have a valid token
       const token = localStorage.getItem('api_token');
       if (!token) {
         setAuthenticated(false);
@@ -45,7 +58,7 @@ function App() {
     return <TokenSetup onComplete={() => setAuthenticated(true)} />;
   }
 
-  return <Dashboard onLogout={() => setAuthenticated(false)} />;
+  return <Dashboard onLogout={authRequired ? () => setAuthenticated(false) : undefined} />;
 }
 
 export default App;

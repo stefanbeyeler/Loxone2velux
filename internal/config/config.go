@@ -106,11 +106,9 @@ func (c *Config) Validate() error {
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		return fmt.Errorf("server.port must be between 1 and 65535")
 	}
-	if c.Server.APIToken == "" {
-		return fmt.Errorf("server.api_token is required for security")
-	}
-	if len(c.Server.APIToken) < 16 {
-		return fmt.Errorf("server.api_token must be at least 16 characters")
+	// API token is optional - if not set, no authentication required
+	if c.Server.APIToken != "" && len(c.Server.APIToken) < 16 {
+		return fmt.Errorf("server.api_token must be at least 16 characters if set")
 	}
 	return nil
 }

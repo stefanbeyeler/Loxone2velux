@@ -6,16 +6,9 @@ import {
   PositionRequest,
 } from '../types';
 
-// Get API token from localStorage or prompt
+// Get API token from localStorage (no prompt - handled by App.tsx)
 function getApiToken(): string {
-  let token = localStorage.getItem('api_token');
-  if (!token) {
-    token = prompt('Bitte API Token eingeben:') || '';
-    if (token) {
-      localStorage.setItem('api_token', token);
-    }
-  }
-  return token;
+  return localStorage.getItem('api_token') || '';
 }
 
 // Clear stored token (for logout/reset)
