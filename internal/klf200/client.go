@@ -405,19 +405,71 @@ func (c *Client) waitForResponse(ctx context.Context, cmd CommandID, timeout tim
 func (c *Client) handleAsyncFrame(frame *Frame) {
 	switch frame.Command {
 	case GW_NODE_STATE_POSITION_CHANGED_NTF:
-		nodeID, position, err := ParseNodeStatePositionChanged(frame.Data)
+		nodeID, state, position, target, err := ParseNodeStatePositionChangedFull(frame.Data)
 		if err != nil {
 			c.logger.Warn().Err(err).Msg("Failed to parse position change")
 			return
 		}
+		c.logger.Debug().
+			Uint8("nodeID", nodeID).
+			Uint8("state", uint8(state)).
+			Uint16("position", position).
+			Uint16("target", target).
+			Float64("percent", PositionToPercent(position)).
+			Msg("Node position changed notification")
 		if c.onNodeUpdate != nil {
 			c.onNodeUpdate(&Node{
 				ID:              nodeID,
+				State:           state,
+				StateStr:        state.String(),
 				CurrentPosition: position,
 				PositionPercent: PositionToPercent(position),
+				TargetPosition:  target,
+				TargetPercent:   PositionToPercent(target),
 				LastUpdate:      time.Now(),
 			})
 		}
+
+	case GW_COMMAND_RUN_STATUS_NTF:
+		sessionID, nodeID, runStatus, statusReply, err := ParseRunStatusNotification(frame.Data)
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("Failed to parse run status")
+			return
+		}
+		c.logger.Debug().
+			Uint16("sessionID", sessionID).
+			Uint8("nodeID", nodeID).
+			Uint8("runStatus", uint8(runStatus)).
+			Uint8("statusReply", uint8(statusReply)).
+			Msg("Command run status notification")
+		// Update state based on run status
+		var state NodeState
+		switch runStatus {
+		case RunStatusExecutionCompleted:
+			state = NodeStateDone
+		case RunStatusExecutionFailed:
+			state = NodeStateErrorWhileExecution
+		case RunStatusExecutionActive:
+			state = NodeStateExecuting
+		}
+		if c.onNodeUpdate != nil {
+			c.onNodeUpdate(&Node{
+				ID:         nodeID,
+				State:      state,
+				StateStr:   state.String(),
+				LastUpdate: time.Now(),
+			})
+		}
+	}
+}
+
+// isAsyncNotification returns true if the frame is an async notification that should be handled immediately
+func (c *Client) isAsyncNotification(cmd CommandID) bool {
+	switch cmd {
+	case GW_NODE_STATE_POSITION_CHANGED_NTF, GW_COMMAND_RUN_STATUS_NTF:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -473,10 +525,15 @@ func (c *Client) readLoop() {
 							Int("dataLen", len(frame.Data)).
 							Msg("Received frame")
 
-						select {
-						case c.responseChan <- frame:
-						default:
-							c.logger.Warn().Msg("Response channel full, dropping frame")
+						// Handle async notifications directly, don't queue them
+						if c.isAsyncNotification(frame.Command) {
+							c.handleAsyncFrame(frame)
+						} else {
+							select {
+							case c.responseChan <- frame:
+							default:
+								c.logger.Warn().Msg("Response channel full, dropping frame")
+							}
 						}
 					}
 					frameBuf.Reset()

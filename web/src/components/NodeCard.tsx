@@ -83,7 +83,10 @@ export function NodeCard({
             <Icon size={20} className="text-white" />
           </div>
           <div>
-            <h3 className="font-medium text-white">{node.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-medium text-white">{node.name}</h3>
+              <span className="px-1.5 py-0.5 bg-gray-700 rounded text-xs text-gray-400 font-mono">#{node.id}</span>
+            </div>
             <p className="text-xs text-gray-400">{node.node_type_str}</p>
           </div>
         </div>

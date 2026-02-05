@@ -367,7 +367,7 @@ func ParseNodeInformation(data []byte) (*Node, error) {
 	return node, nil
 }
 
-// ParseNodeStatePositionChanged parses position change notification
+// ParseNodeStatePositionChanged parses position change notification (legacy)
 func ParseNodeStatePositionChanged(data []byte) (nodeID uint8, position uint16, err error) {
 	if len(data) < 6 {
 		return 0, 0, ErrFrameTooShort
@@ -378,6 +378,25 @@ func ParseNodeStatePositionChanged(data []byte) (nodeID uint8, position uint16, 
 	position = binary.BigEndian.Uint16(data[2:4])
 
 	return nodeID, position, nil
+}
+
+// ParseNodeStatePositionChangedFull parses position change notification with all fields
+// Frame structure:
+// - NodeID: 1 byte @ 0
+// - State: 1 byte @ 1
+// - CurrentPosition: 2 bytes @ 2-3
+// - Target: 2 bytes @ 4-5
+func ParseNodeStatePositionChangedFull(data []byte) (nodeID uint8, state NodeState, position uint16, target uint16, err error) {
+	if len(data) < 6 {
+		return 0, 0, 0, 0, ErrFrameTooShort
+	}
+
+	nodeID = data[0]
+	state = NodeState(data[1])
+	position = binary.BigEndian.Uint16(data[2:4])
+	target = binary.BigEndian.Uint16(data[4:6])
+
+	return nodeID, state, position, target, nil
 }
 
 // ParseCommandSendConfirm parses command confirmation
