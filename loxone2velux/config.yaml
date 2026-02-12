@@ -1,5 +1,5 @@
 name: Loxone2Velux Gateway
-version: "1.0.3"
+version: "1.0.4"
 slug: loxone2velux
 description: >-
   Bridge between Loxone home automation and Velux KLF-200 gateway for
@@ -13,7 +13,6 @@ arch:
 
 startup: application
 boot: auto
-init: false
 
 # Web UI via Home Assistant sidebar (ingress)
 ingress: true
