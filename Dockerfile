@@ -26,8 +26,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /loxone2velux ./cmd/gateway/
+# Build the binary with version from VERSION file
+RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s -X main.version=${VERSION}" -o /loxone2velux ./cmd/gateway/
 
 # Runtime stage
 FROM alpine:3.19

@@ -50,8 +50,9 @@ RUN case "${BUILD_ARCH}" in \
         "armv7")   export GOARCH=arm && export GOARM=7 ;; \
         *)         export GOARCH=amd64 ;; \
     esac && \
+    VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
     CGO_ENABLED=0 GOOS=linux \
-    go build -ldflags="-w -s" -o /loxone2velux ./cmd/gateway/
+    go build -ldflags="-w -s -X main.version=${VERSION}" -o /loxone2velux ./cmd/gateway/
 
 # ============================================================
 # Stage 4: Runtime on Home Assistant base image

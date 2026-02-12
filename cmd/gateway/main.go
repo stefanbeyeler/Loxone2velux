@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
@@ -15,6 +16,8 @@ import (
 	"github.com/stefanbeyeler/loxone2velux/internal/config"
 	"github.com/stefanbeyeler/loxone2velux/internal/gateway"
 )
+
+var version = "dev"
 
 // ConfigManager manages configuration with persistence
 type ConfigManager struct {
@@ -79,7 +82,13 @@ func (m *ConfigManager) UpdateConfig(cfg *config.Config) error {
 func main() {
 	// Parse command line flags
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
+	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("loxone2velux", version)
+		os.Exit(0)
+	}
 
 	// Load configuration
 	cfg, err := config.Load(*configPath)
@@ -108,6 +117,7 @@ func main() {
 	logger := setupLogger(cfg.Logging)
 
 	logger.Info().
+		Str("version", version).
 		Str("klf200_host", cfg.KLF200.Host).
 		Int("klf200_port", cfg.KLF200.Port).
 		Int("server_port", cfg.Server.Port).
