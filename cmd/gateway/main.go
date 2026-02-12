@@ -104,13 +104,15 @@ func main() {
 				cfg.KLF200.Password = password
 			}
 		} else {
-			panic("Failed to load configuration: " + err.Error())
+			fmt.Fprintf(os.Stderr, "ERROR: Failed to load configuration: %s\n", err.Error())
+			os.Exit(1)
 		}
 	}
 
 	// Validate config
 	if err := cfg.Validate(); err != nil {
-		panic("Invalid configuration: " + err.Error())
+		fmt.Fprintf(os.Stderr, "ERROR: Invalid configuration: %s\n", err.Error())
+		os.Exit(1)
 	}
 
 	// Setup logger
