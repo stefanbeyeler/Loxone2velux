@@ -1,5 +1,5 @@
 # Global build args (must be before first FROM)
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.19
+ARG BUILD_FROM=alpine:3.19
 ARG BUILD_ARCH=amd64
 
 # ============================================================
@@ -57,11 +57,11 @@ RUN case "${BUILD_ARCH}" in \
     go build -ldflags="-w -s -X main.version=${VERSION}" -o /loxone2velux ./cmd/gateway/
 
 # ============================================================
-# Stage 4: Runtime on Home Assistant base image
+# Stage 4: Runtime (plain Alpine - no s6-overlay dependency)
 # ============================================================
 FROM ${BUILD_FROM}
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata jq
 
 # Copy binary
 COPY --from=builder /loxone2velux /usr/bin/loxone2velux
@@ -74,4 +74,4 @@ COPY --from=frontend /web/dist /app/web/dist
 COPY run.sh /
 RUN chmod a+x /run.sh
 
-CMD [ "/run.sh" ]
+ENTRYPOINT ["/run.sh"]

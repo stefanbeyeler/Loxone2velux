@@ -1,25 +1,39 @@
-#!/usr/bin/with-contenv bashio
+#!/bin/sh
 # ==============================================================================
 # Loxone2Velux Gateway - Startup script
+# Reads HA add-on options from /data/options.json via jq
 # ==============================================================================
+set -e
 
-bashio::log.info "=== Loxone2Velux Gateway starting ==="
+echo "=== Loxone2Velux Gateway starting ==="
 
-# Read add-on options
-KLF200_HOST=$(bashio::config 'klf200_host' 2>/dev/null || echo "")
-KLF200_PASSWORD=$(bashio::config 'klf200_password' 2>/dev/null || echo "")
-KLF200_PORT=$(bashio::config 'klf200_port' 2>/dev/null || echo "51200")
-RECONNECT_INTERVAL=$(bashio::config 'reconnect_interval' 2>/dev/null || echo "30")
-REFRESH_INTERVAL=$(bashio::config 'refresh_interval' 2>/dev/null || echo "300")
-LOG_LEVEL=$(bashio::config 'log_level' 2>/dev/null || echo "info")
-API_TOKEN=$(bashio::config 'api_token' 2>/dev/null || echo "")
+# Read add-on options from Home Assistant
+OPTIONS_FILE="/data/options.json"
 
-# Get ingress port
-INGRESS_PORT=$(bashio::addon.ingress_port 2>/dev/null || echo "8099")
-LISTEN_PORT=${INGRESS_PORT:-8099}
+if [ -f "$OPTIONS_FILE" ]; then
+    echo "Reading options from ${OPTIONS_FILE}"
+    KLF200_HOST=$(jq -r '.klf200_host // ""' "$OPTIONS_FILE")
+    KLF200_PASSWORD=$(jq -r '.klf200_password // ""' "$OPTIONS_FILE")
+    KLF200_PORT=$(jq -r '.klf200_port // 51200' "$OPTIONS_FILE")
+    RECONNECT_INTERVAL=$(jq -r '.reconnect_interval // 30' "$OPTIONS_FILE")
+    REFRESH_INTERVAL=$(jq -r '.refresh_interval // 300' "$OPTIONS_FILE")
+    LOG_LEVEL=$(jq -r '.log_level // "info"' "$OPTIONS_FILE")
+    API_TOKEN=$(jq -r '.api_token // ""' "$OPTIONS_FILE")
+else
+    echo "WARNING: Options file not found at ${OPTIONS_FILE}, using defaults"
+    KLF200_HOST=""
+    KLF200_PASSWORD=""
+    KLF200_PORT=51200
+    RECONNECT_INTERVAL=30
+    REFRESH_INTERVAL=300
+    LOG_LEVEL="info"
+    API_TOKEN=""
+fi
 
-bashio::log.info "KLF-200 host: ${KLF200_HOST}:${KLF200_PORT}"
-bashio::log.info "Listening on port: ${LISTEN_PORT}"
+LISTEN_PORT=8099
+
+echo "KLF-200 host: ${KLF200_HOST}:${KLF200_PORT}"
+echo "Listening on port: ${LISTEN_PORT}"
 
 # Generate config.yaml for the Go binary
 CONFIG_FILE="/data/config.yaml"
@@ -44,12 +58,12 @@ logging:
   format: "console"
 EOF
 
-bashio::log.info "Configuration written to ${CONFIG_FILE}"
+echo "Configuration written to ${CONFIG_FILE}"
 
 # Change to /app so the binary can find web/dist
 cd /app || true
 
-bashio::log.info "Starting binary..."
+echo "Starting binary..."
 
-# Start the gateway
+# Start the gateway (exec replaces shell with Go binary)
 exec /usr/bin/loxone2velux -config "${CONFIG_FILE}"
