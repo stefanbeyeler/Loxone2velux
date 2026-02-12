@@ -1,0 +1,63 @@
+name: Loxone2Velux Gateway
+version: "1.0.0"
+slug: loxone2velux
+description: >-
+  Bridge between Loxone home automation and Velux KLF-200 gateway for
+  controlling windows, shutters, and blinds via REST API and web UI.
+url: "https://github.com/stefanbeyeler/loxone2velux"
+
+arch:
+  - amd64
+  - aarch64
+  - armv7
+
+startup: application
+boot: auto
+init: false
+
+# Web UI via Home Assistant sidebar (ingress)
+ingress: true
+ingress_port: 8099
+ingress_entry: /
+panel_icon: mdi:window-shutter
+panel_title: Loxone2Velux
+
+# Direct HTTP access for Loxone Miniserver
+ports:
+  8099/tcp: 8080
+ports_description:
+  8099/tcp: "REST API for Loxone integration (direct HTTP access)"
+
+host_network: false
+hassio_api: false
+homeassistant_api: false
+auth_api: false
+
+stage: experimental
+
+# Auto-restart on failure
+watchdog: "http://[HOST]:[PORT:8099]/health"
+
+# Persistent data
+map:
+  - config:rw
+
+# User-configurable options
+options:
+  klf200_host: ""
+  klf200_password: ""
+  klf200_port: 51200
+  reconnect_interval: 30
+  refresh_interval: 300
+  log_level: "info"
+  api_token: ""
+
+# Validation schema
+schema:
+  klf200_host: str
+  klf200_password: password
+  klf200_port: "int(1,65535)"
+  reconnect_interval: "int(5,3600)"
+  refresh_interval: "int(30,86400)"
+  log_level: list(debug|info|warn|error)
+  api_token: "str?"

@@ -22,6 +22,10 @@ go.work
 
 # Config with secrets
 config.yaml
+!homeassistant/loxone2velux/config.yaml
+
+# Docker image export
+*.tar
 
 # Claude Code
 .claude/
