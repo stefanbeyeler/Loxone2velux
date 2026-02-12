@@ -26,7 +26,7 @@ FROM node:20-alpine AS frontend
 
 WORKDIR /web
 COPY --from=source /src/web/package*.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --no-audit --no-fund
 COPY --from=source /src/web/ .
 RUN npm run build
 
