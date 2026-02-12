@@ -11,11 +11,13 @@ FROM alpine:3.19 AS source
 
 RUN apk add --no-cache git
 
-ARG BUILD_REPOSITORY=stefanbeyeler/Loxone2velux
-ARG BUILD_VERSION=main
+# Use custom arg names to avoid HA Supervisor overriding them
+# (HA passes BUILD_REPOSITORY as full URL and BUILD_VERSION as addon version)
+ARG SOURCE_REPO=https://github.com/stefanbeyeler/Loxone2velux.git
+ARG SOURCE_BRANCH=main
 
-RUN git clone --depth 1 --branch ${BUILD_VERSION} \
-    "https://github.com/${BUILD_REPOSITORY}.git" /src
+RUN git clone --depth 1 --branch ${SOURCE_BRANCH} \
+    "${SOURCE_REPO}" /src
 
 # ============================================================
 # Stage 2: Build frontend
