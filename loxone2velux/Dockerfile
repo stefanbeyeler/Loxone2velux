@@ -1,3 +1,7 @@
+# Global build args (must be before first FROM)
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.19
+ARG BUILD_ARCH=amd64
+
 # ============================================================
 # Stage 1: Clone source
 # (HA builder sets context to add-on subdir, so we need to
@@ -7,8 +11,8 @@ FROM alpine:3.19 AS source
 
 RUN apk add --no-cache git
 
-ARG BUILD_REPOSITORY="stefanbeyeler/loxone2velux"
-ARG BUILD_VERSION="main"
+ARG BUILD_REPOSITORY=stefanbeyeler/Loxone2velux
+ARG BUILD_VERSION=main
 
 RUN git clone --depth 1 --branch ${BUILD_VERSION} \
     "https://github.com/${BUILD_REPOSITORY}.git" /src
@@ -38,7 +42,8 @@ RUN go mod download
 
 COPY --from=source /src/ .
 
-ARG BUILD_ARCH=amd64
+# Re-declare to use within this stage
+ARG BUILD_ARCH
 RUN case "${BUILD_ARCH}" in \
         "amd64")   export GOARCH=amd64 ;; \
         "aarch64") export GOARCH=arm64 ;; \
@@ -51,7 +56,6 @@ RUN case "${BUILD_ARCH}" in \
 # ============================================================
 # Stage 4: Runtime on Home Assistant base image
 # ============================================================
-ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
 RUN apk add --no-cache ca-certificates tzdata
