@@ -70,5 +70,8 @@ RUN chmod +x /usr/bin/loxone2velux
 # Copy frontend
 COPY --from=frontend /web/dist /app/web/dist
 
-# Copy s6 service definitions
-COPY rootfs /
+# Copy startup script
+COPY run.sh /
+RUN chmod a+x /run.sh
+
+CMD [ "/run.sh" ]

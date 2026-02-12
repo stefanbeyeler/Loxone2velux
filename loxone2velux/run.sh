@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Loxone2Velux Gateway - s6 service run script
+# Loxone2Velux Gateway - Startup script
 # ==============================================================================
 
 # Read add-on options
