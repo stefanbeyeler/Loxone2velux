@@ -1,5 +1,5 @@
 # Global build args (must be before first FROM)
-ARG BUILD_FROM=alpine:3.19
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.19
 ARG BUILD_ARCH=amd64
 
 # ============================================================
@@ -57,7 +57,7 @@ RUN case "${BUILD_ARCH}" in \
     go build -ldflags="-w -s -X main.version=${VERSION}" -o /loxone2velux ./cmd/gateway/
 
 # ============================================================
-# Stage 4: Runtime (plain Alpine - no s6-overlay dependency)
+# Stage 4: Runtime on Home Assistant base image (s6-overlay v3)
 # ============================================================
 FROM ${BUILD_FROM}
 
@@ -74,4 +74,11 @@ COPY --from=frontend /web/dist /app/web/dist
 COPY run.sh /
 RUN chmod a+x /run.sh
 
-ENTRYPOINT ["/run.sh"]
+# Set up s6-overlay v3 longrun service
+# This is the proper way to register a service with s6-overlay v3
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/svc-loxone2velux \
+    && echo "longrun" > /etc/s6-overlay/s6-rc.d/svc-loxone2velux/type \
+    && printf '#!/bin/sh\nexec /run.sh\n' > /etc/s6-overlay/s6-rc.d/svc-loxone2velux/run \
+    && chmod +x /etc/s6-overlay/s6-rc.d/svc-loxone2velux/run \
+    && mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d \
+    && touch /etc/s6-overlay/s6-rc.d/user/contents.d/svc-loxone2velux

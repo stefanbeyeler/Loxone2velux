@@ -1,9 +1,10 @@
 # Changelog
 
-## 1.0.7
+## 1.0.8
 
-- Startup-Zuverlässigkeit verbessert: s6-overlay/bashio durch plain Alpine + jq ersetzt
-- ENTRYPOINT statt CMD für direkte Prozess-Ausführung
+- Korrekter s6-overlay v3 longrun Service statt CMD/ENTRYPOINT
+- HA Base Image wiederhergestellt (s6-overlay Kompatibilität)
+- bashio durch /bin/sh + jq ersetzt für zuverlässiges Options-Parsing
 - Liest HA-Optionen direkt aus /data/options.json
 
 ## 1.0.0
