@@ -15,6 +15,10 @@ RUN apk add --no-cache git
 ARG SOURCE_REPO=https://github.com/stefanbeyeler/Loxone2velux.git
 ARG SOURCE_BRANCH=main
 
+# Cache bust: COPY config.yaml from build context — changes with every
+# version bump, which invalidates this layer and the git clone below
+COPY config.yaml /tmp/addon-config.yaml
+
 RUN git clone --depth 1 --branch ${SOURCE_BRANCH} \
     "${SOURCE_REPO}" /src
 
