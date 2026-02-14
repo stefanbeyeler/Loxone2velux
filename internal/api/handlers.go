@@ -25,14 +25,16 @@ type Handlers struct {
 	gateway    *gateway.Service
 	logger     zerolog.Logger
 	configMgr  ConfigManager
+	version    string
 }
 
 // NewHandlers creates new handlers
-func NewHandlers(gw *gateway.Service, logger zerolog.Logger, configMgr ConfigManager) *Handlers {
+func NewHandlers(gw *gateway.Service, logger zerolog.Logger, configMgr ConfigManager, version string) *Handlers {
 	return &Handlers{
 		gateway:   gw,
 		logger:    logger.With().Str("component", "handlers").Logger(),
 		configMgr: configMgr,
+		version:   version,
 	}
 }
 
@@ -41,6 +43,7 @@ type HealthResponse struct {
 	Status    string `json:"status"`
 	Connected bool   `json:"connected"`
 	NodeCount int    `json:"node_count"`
+	Version   string `json:"version"`
 }
 
 type ErrorResponse struct {
@@ -70,6 +73,7 @@ func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 		Status:    "ok",
 		Connected: h.gateway.IsConnected(),
 		NodeCount: h.gateway.GetNodeCount(),
+		Version:   h.version,
 	}
 
 	if !resp.Connected {

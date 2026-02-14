@@ -25,15 +25,17 @@ type Server struct {
 	logger    zerolog.Logger
 	server    *http.Server
 	configMgr ConfigManager
+	version   string
 }
 
 // NewServer creates a new API server
-func NewServer(cfg *config.ServerConfig, gw *gateway.Service, logger zerolog.Logger, configMgr ConfigManager) *Server {
+func NewServer(cfg *config.ServerConfig, gw *gateway.Service, logger zerolog.Logger, configMgr ConfigManager, version string) *Server {
 	return &Server{
 		cfg:       cfg,
 		gateway:   gw,
 		logger:    logger.With().Str("component", "api").Logger(),
 		configMgr: configMgr,
+		version:   version,
 	}
 }
 
@@ -77,7 +79,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 	r.Use(chimiddleware.Timeout(30 * time.Second))
 
 	// Handlers
-	h := NewHandlers(s.gateway, s.logger, s.configMgr)
+	h := NewHandlers(s.gateway, s.logger, s.configMgr, s.version)
 
 	// Public routes (no auth required)
 	r.Get("/health", h.Health)

@@ -73,6 +73,7 @@ export interface HealthResponse {
   status: 'ok' | 'degraded';
   connected: boolean;
   node_count: number;
+  version: string;
 }
 
 export interface CommandResponse {

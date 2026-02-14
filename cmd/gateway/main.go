@@ -143,7 +143,7 @@ func main() {
 	configMgr := NewConfigManager(cfg, *configPath, gw, logger)
 
 	// Create and start API server
-	server := api.NewServer(&cfg.Server, gw, logger, configMgr)
+	server := api.NewServer(&cfg.Server, gw, logger, configMgr, version)
 
 	// Start server in goroutine
 	go func() {

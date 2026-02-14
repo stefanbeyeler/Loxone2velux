@@ -18,7 +18,6 @@ import {
   Settings as SettingsIcon,
 } from 'lucide-react';
 
-const VERSION = '1.0.0';
 
 type Tab = 'devices' | 'guide' | 'settings';
 
@@ -307,7 +306,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       <footer className="border-t border-gray-800 py-4 mt-8">
         <div className="max-w-6xl mx-auto px-4 text-center text-xs text-gray-500 space-y-1">
           <div>
-            Loxone2Velux Gateway v{VERSION}
+            Loxone2Velux Gateway {health?.version ? `v${health.version}` : ''}
           </div>
           <div className="text-gray-600">
             &copy; 2026 Stefan Beyeler

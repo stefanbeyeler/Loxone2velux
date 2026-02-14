@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Key, AlertCircle, ArrowRight } from 'lucide-react';
 import * as api from '../services/api';
 
@@ -10,6 +10,11 @@ export function TokenSetup({ onComplete }: TokenSetupProps) {
   const [token, setToken] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [version, setVersion] = useState('');
+
+  useEffect(() => {
+    api.getHealth().then(h => setVersion(h.version)).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +100,7 @@ export function TokenSetup({ onComplete }: TokenSetupProps) {
 
         {/* Footer */}
         <p className="text-center text-xs text-gray-600 mt-6">
-          Loxone2Velux Gateway &copy; 2026
+          Loxone2Velux Gateway {version && `v${version}`} &copy; 2026
         </p>
       </div>
     </div>
