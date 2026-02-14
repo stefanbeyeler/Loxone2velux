@@ -128,11 +128,15 @@ func main() {
 	// Create gateway service
 	gw := gateway.NewService(&cfg.KLF200, logger)
 
-	// Start gateway (non-blocking, connects in background)
-	ctx := context.Background()
-	if err := gw.Start(ctx); err != nil {
-		// Don't fail - will retry in background
-		logger.Warn().Err(err).Msg("Initial KLF-200 connection failed, will retry in background")
+	// Only start gateway if KLF200 is configured
+	if cfg.IsKLF200Configured() {
+		ctx := context.Background()
+		if err := gw.Start(ctx); err != nil {
+			// Don't fail - will retry in background
+			logger.Warn().Err(err).Msg("Initial KLF-200 connection failed, will retry in background")
+		}
+	} else {
+		logger.Warn().Msg("KLF-200 not configured (host or password missing) - gateway not started. Configure via web UI or add-on settings.")
 	}
 
 	// Create config manager

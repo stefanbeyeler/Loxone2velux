@@ -92,16 +92,10 @@ func LoadOrDefault(path string) *Config {
 	return cfg
 }
 
-// Validate validates the configuration
+// Validate validates the configuration (allows missing KLF200 credentials for initial setup)
 func (c *Config) Validate() error {
-	if c.KLF200.Host == "" {
-		return fmt.Errorf("klf200.host is required")
-	}
 	if c.KLF200.Port <= 0 || c.KLF200.Port > 65535 {
 		return fmt.Errorf("klf200.port must be between 1 and 65535")
-	}
-	if c.KLF200.Password == "" {
-		return fmt.Errorf("klf200.password is required")
 	}
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		return fmt.Errorf("server.port must be between 1 and 65535")
@@ -111,6 +105,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server.api_token must be at least 16 characters if set")
 	}
 	return nil
+}
+
+// IsKLF200Configured returns true if KLF200 host and password are set
+func (c *Config) IsKLF200Configured() bool {
+	return c.KLF200.Host != "" && c.KLF200.Password != ""
 }
 
 // Save saves the configuration to a YAML file

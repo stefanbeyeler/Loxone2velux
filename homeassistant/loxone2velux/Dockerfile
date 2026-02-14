@@ -57,7 +57,8 @@ RUN case "${BUILD_ARCH}" in \
     go build -ldflags="-w -s -X main.version=${VERSION}" -o /loxone2velux ./cmd/gateway/
 
 # ============================================================
-# Stage 4: Runtime on Home Assistant base image (s6-overlay v3)
+# Stage 4: Runtime on Home Assistant base image
+# (init: false in config.yaml disables s6-overlay)
 # ============================================================
 FROM ${BUILD_FROM}
 
@@ -70,15 +71,13 @@ RUN chmod +x /usr/bin/loxone2velux
 # Copy frontend
 COPY --from=frontend /web/dist /app/web/dist
 
-# Copy startup script
+# Copy startup script and fix potential Windows CRLF line endings
 COPY run.sh /
-RUN chmod a+x /run.sh
+RUN sed -i 's/\r$//' /run.sh && chmod a+x /run.sh
 
-# Set up s6-overlay v3 longrun service
-# This is the proper way to register a service with s6-overlay v3
-RUN mkdir -p /etc/s6-overlay/s6-rc.d/svc-loxone2velux \
-    && echo "longrun" > /etc/s6-overlay/s6-rc.d/svc-loxone2velux/type \
-    && printf '#!/bin/sh\nexec /run.sh\n' > /etc/s6-overlay/s6-rc.d/svc-loxone2velux/run \
-    && chmod +x /etc/s6-overlay/s6-rc.d/svc-loxone2velux/run \
-    && mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d \
-    && touch /etc/s6-overlay/s6-rc.d/user/contents.d/svc-loxone2velux
+# Prepare persistent config directory
+RUN mkdir -p /data /config/loxone2velux
+
+EXPOSE 8099
+
+CMD ["/run.sh"]
