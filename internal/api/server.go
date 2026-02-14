@@ -113,7 +113,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 		})
 		// Configuration endpoints
 		r.Get("/config", h.GetConfig)
-		r.Put("/config", h.UpdateConfig)
+		r.Post("/config", h.UpdateConfig)
 		r.Post("/reconnect", h.Reconnect)
 	})
 

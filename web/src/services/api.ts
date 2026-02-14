@@ -97,7 +97,7 @@ export async function getConfig(): Promise<GatewayConfig> {
 // Update configuration
 export async function updateConfig(config: Partial<GatewayConfig>): Promise<GatewayConfig> {
   return fetchJSON<GatewayConfig>('/api/config', {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify(config),
   });
 }
