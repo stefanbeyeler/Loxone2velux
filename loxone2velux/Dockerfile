@@ -15,6 +15,8 @@ RUN apk add --no-cache git
 # (HA passes BUILD_REPOSITORY as full URL and BUILD_VERSION as addon version)
 ARG SOURCE_REPO=https://github.com/stefanbeyeler/Loxone2velux.git
 ARG SOURCE_BRANCH=main
+# Cache bust: HA Supervisor passes BUILD_VERSION which changes per version
+ARG BUILD_VERSION=dev
 
 RUN git clone --depth 1 --branch ${SOURCE_BRANCH} \
     "${SOURCE_REPO}" /src
