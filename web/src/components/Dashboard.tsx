@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { NodeList } from './NodeList';
 import { LoxoneGuide } from './LoxoneGuide';
 import { SensorCard } from './SensorCard';
-import { Settings } from './Settings';
 import * as api from '../services/api';
 import { Node, HealthResponse, SensorStatus } from '../types';
 import {
@@ -14,11 +13,11 @@ import {
   Menu,
   X,
   Server,
-  Settings as SettingsIcon,
+  PlugZap,
 } from 'lucide-react';
 
 
-type Tab = 'devices' | 'guide' | 'settings';
+type Tab = 'devices' | 'guide';
 
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('devices');
@@ -28,6 +27,7 @@ export function Dashboard() {
   const [sensors, setSensors] = useState<SensorStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [sensorsRefreshing, setSensorsRefreshing] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -60,6 +60,23 @@ export function Dashboard() {
       setError(err instanceof Error ? err.message : 'Sensor-Abfrage fehlgeschlagen');
     } finally {
       setSensorsRefreshing(false);
+    }
+  };
+
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    setError(null);
+    try {
+      const result = await api.reconnectGateway();
+      if (!result.success) {
+        setError(result.message || 'Verbindung fehlgeschlagen');
+      }
+      // Refresh data after reconnect
+      setTimeout(fetchData, 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Fehler beim Neuverbinden');
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -116,7 +133,6 @@ export function Dashboard() {
   const tabs = [
     { id: 'devices' as Tab, label: 'Geräte', icon: Blinds, count: nodes.length },
     { id: 'guide' as Tab, label: 'Loxone Anleitung', icon: BookOpen },
-    { id: 'settings' as Tab, label: 'Einstellungen', icon: SettingsIcon },
   ];
 
   return (
@@ -153,6 +169,16 @@ export function Dashboard() {
                   {isConnected ? 'Verbunden' : 'Getrennt'}
                 </span>
               </div>
+
+              {/* Reconnect Button */}
+              <button
+                onClick={handleReconnect}
+                disabled={reconnecting}
+                className="p-2 text-gray-400 hover:text-yellow-400 transition-colors disabled:opacity-50"
+                title="Neu verbinden"
+              >
+                <PlugZap size={20} className={reconnecting ? 'animate-pulse' : ''} />
+              </button>
 
               {/* Refresh Button */}
               <button
@@ -268,8 +294,6 @@ export function Dashboard() {
         )}
 
         {activeTab === 'guide' && <LoxoneGuide />}
-
-        {activeTab === 'settings' && <Settings onConfigChange={fetchData} />}
       </main>
 
       {/* Footer */}
