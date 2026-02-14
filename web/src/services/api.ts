@@ -8,7 +8,7 @@ import {
   GatewayConfig,
 } from '../types';
 
-// Base fetch helper
+// Base fetch helper — uses relative URLs for HA Ingress compatibility
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
@@ -28,7 +28,7 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 
 // Health check (no auth required)
 export async function getHealth(): Promise<HealthResponse> {
-  const response = await fetch('/health');
+  const response = await fetch('health');
   if (!response.ok) {
     throw new Error('Health check failed');
   }
@@ -37,18 +37,18 @@ export async function getHealth(): Promise<HealthResponse> {
 
 // Get all nodes
 export async function getNodes(): Promise<NodesResponse> {
-  return fetchJSON<NodesResponse>('/api/nodes');
+  return fetchJSON<NodesResponse>('api/nodes');
 }
 
 // Get single node
 export async function getNode(id: number): Promise<Node> {
-  return fetchJSON<Node>(`/api/nodes/${id}`);
+  return fetchJSON<Node>(`api/nodes/${id}`);
 }
 
 // Set node position (0-100%)
 export async function setNodePosition(id: number, position: number): Promise<CommandResponse> {
   const body: PositionRequest = { position };
-  return fetchJSON<CommandResponse>(`/api/nodes/${id}/position`, {
+  return fetchJSON<CommandResponse>(`api/nodes/${id}/position`, {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -56,33 +56,33 @@ export async function setNodePosition(id: number, position: number): Promise<Com
 
 // Open node fully
 export async function openNode(id: number): Promise<CommandResponse> {
-  return fetchJSON<CommandResponse>(`/api/nodes/${id}/open`, {
+  return fetchJSON<CommandResponse>(`api/nodes/${id}/open`, {
     method: 'POST',
   });
 }
 
 // Close node fully
 export async function closeNode(id: number): Promise<CommandResponse> {
-  return fetchJSON<CommandResponse>(`/api/nodes/${id}/close`, {
+  return fetchJSON<CommandResponse>(`api/nodes/${id}/close`, {
     method: 'POST',
   });
 }
 
 // Stop node movement
 export async function stopNode(id: number): Promise<CommandResponse> {
-  return fetchJSON<CommandResponse>(`/api/nodes/${id}/stop`, {
+  return fetchJSON<CommandResponse>(`api/nodes/${id}/stop`, {
     method: 'POST',
   });
 }
 
 // Get sensor status (rain, wind, etc.)
 export async function getSensorStatus(): Promise<SensorStatus> {
-  return fetchJSON<SensorStatus>('/api/sensors');
+  return fetchJSON<SensorStatus>('api/sensors');
 }
 
 // Refresh sensor status from KLF-200
 export async function refreshSensorStatus(): Promise<SensorStatus> {
-  return fetchJSON<SensorStatus>('/api/sensors/refresh', {
+  return fetchJSON<SensorStatus>('api/sensors/refresh', {
     method: 'POST',
   });
 }
@@ -91,12 +91,12 @@ export async function refreshSensorStatus(): Promise<SensorStatus> {
 
 // Get current configuration
 export async function getConfig(): Promise<GatewayConfig> {
-  return fetchJSON<GatewayConfig>('/api/config');
+  return fetchJSON<GatewayConfig>('api/config');
 }
 
 // Update configuration
 export async function updateConfig(config: Partial<GatewayConfig>): Promise<GatewayConfig> {
-  return fetchJSON<GatewayConfig>('/api/config', {
+  return fetchJSON<GatewayConfig>('api/config', {
     method: 'POST',
     body: JSON.stringify(config),
   });
@@ -104,7 +104,7 @@ export async function updateConfig(config: Partial<GatewayConfig>): Promise<Gate
 
 // Reconnect to KLF-200
 export async function reconnectGateway(): Promise<{ success: boolean; message: string }> {
-  return fetchJSON<{ success: boolean; message: string }>('/api/reconnect', {
+  return fetchJSON<{ success: boolean; message: string }>('api/reconnect', {
     method: 'POST',
   });
 }
