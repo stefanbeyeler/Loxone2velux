@@ -1,5 +1,5 @@
 name: Loxone2Velux Gateway
-version: "1.0.10"
+version: "1.0.11"
 slug: loxone2velux
 description: >-
   Bridge between Loxone home automation and Velux KLF-200 gateway for
@@ -24,7 +24,7 @@ panel_title: Loxone2Velux
 
 # Direct HTTP access for Loxone Miniserver
 ports:
-  8099/tcp: 8080
+  8099/tcp: 8099
 ports_description:
   8099/tcp: "REST API for Loxone integration (direct HTTP access)"
 
