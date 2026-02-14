@@ -12,14 +12,13 @@ FROM alpine:3.19 AS source
 RUN apk add --no-cache git
 
 # Use custom arg names to avoid HA Supervisor overriding them
-# (HA passes BUILD_REPOSITORY as full URL and BUILD_VERSION as addon version)
 ARG SOURCE_REPO=https://github.com/stefanbeyeler/Loxone2velux.git
 ARG SOURCE_BRANCH=main
-# Cache bust: HA Supervisor passes BUILD_VERSION, using it in RUN invalidates cache
-ARG BUILD_VERSION=dev
 
-RUN echo "Building ${BUILD_VERSION}" && \
-    git clone --depth 1 --branch ${SOURCE_BRANCH} \
+# Cache bust: ADD fetches latest commit info — if repo changed, cache is invalidated
+ADD "https://api.github.com/repos/stefanbeyeler/Loxone2velux/commits/main" /tmp/git-version.json
+
+RUN git clone --depth 1 --branch ${SOURCE_BRANCH} \
     "${SOURCE_REPO}" /src
 
 # ============================================================
