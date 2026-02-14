@@ -15,9 +15,6 @@ RUN apk add --no-cache git
 ARG SOURCE_REPO=https://github.com/stefanbeyeler/Loxone2velux.git
 ARG SOURCE_BRANCH=main
 
-# Cache bust: ADD fetches latest commit info — if repo changed, cache is invalidated
-ADD "https://api.github.com/repos/stefanbeyeler/Loxone2velux/commits/main" /tmp/git-version.json
-
 RUN git clone --depth 1 --branch ${SOURCE_BRANCH} \
     "${SOURCE_REPO}" /src
 
