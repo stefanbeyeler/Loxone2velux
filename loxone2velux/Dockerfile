@@ -80,4 +80,6 @@ RUN mkdir -p /data /config/loxone2velux
 
 EXPOSE 8099
 
+# Override base image's /init entrypoint (s6-overlay) since init: false
+ENTRYPOINT []
 CMD ["/run.sh"]
