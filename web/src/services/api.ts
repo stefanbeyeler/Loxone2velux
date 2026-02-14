@@ -8,33 +8,15 @@ import {
   GatewayConfig,
 } from '../types';
 
-// Get API token from localStorage (no prompt - handled by App.tsx)
-function getApiToken(): string {
-  return localStorage.getItem('api_token') || '';
-}
-
-// Clear stored token (for logout/reset)
-export function clearApiToken(): void {
-  localStorage.removeItem('api_token');
-}
-
-// Base fetch with token
+// Base fetch helper
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const token = getApiToken();
-
   const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
       ...options?.headers,
     },
   });
-
-  if (response.status === 401) {
-    clearApiToken();
-    throw new Error('Unauthorized - Token ungültig');
-  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: response.statusText }));

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Key, AlertCircle, ArrowRight } from 'lucide-react';
+import { Blinds, AlertCircle, ArrowRight } from 'lucide-react';
 import * as api from '../services/api';
 
 interface TokenSetupProps {
@@ -7,7 +7,9 @@ interface TokenSetupProps {
 }
 
 export function TokenSetup({ onComplete }: TokenSetupProps) {
-  const [token, setToken] = useState('');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('51200');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [version, setVersion] = useState('');
@@ -22,17 +24,18 @@ export function TokenSetup({ onComplete }: TokenSetupProps) {
     setLoading(true);
 
     try {
-      // Store token temporarily
-      localStorage.setItem('api_token', token);
-
-      // Test the token
-      await api.getNodes();
-
-      // Success
+      await api.updateConfig({
+        klf200: {
+          host,
+          port: parseInt(port, 10),
+          password,
+          reconnect_interval: '30s',
+          refresh_interval: '300s',
+        },
+      });
       onComplete();
     } catch (err) {
-      localStorage.removeItem('api_token');
-      setError(err instanceof Error ? err.message : 'Verbindung fehlgeschlagen');
+      setError(err instanceof Error ? err.message : 'Konfiguration fehlgeschlagen');
     } finally {
       setLoading(false);
     }
@@ -45,30 +48,57 @@ export function TokenSetup({ onComplete }: TokenSetupProps) {
           {/* Header */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-velux-blue rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Key size={32} className="text-white" />
+              <Blinds size={32} className="text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">Loxone2Velux</h1>
-            <p className="text-gray-400">Gateway Authentifizierung</p>
+            <p className="text-gray-400">KLF-200 Erstkonfiguration</p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="token" className="block text-sm font-medium text-gray-300 mb-2">
-                API Token
+              <label htmlFor="host" className="block text-sm font-medium text-gray-300 mb-2">
+                IP-Adresse / Hostname
               </label>
               <input
-                type="password"
-                id="token"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="Token aus config.yaml"
+                type="text"
+                id="host"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder="192.168.1.100"
                 className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-velux-blue focus:border-transparent"
                 required
               />
-              <p className="mt-2 text-xs text-gray-500">
-                Das Token findest du in der config.yaml unter server.api_token
-              </p>
+            </div>
+
+            <div>
+              <label htmlFor="port" className="block text-sm font-medium text-gray-300 mb-2">
+                Port
+              </label>
+              <input
+                type="number"
+                id="port"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                placeholder="51200"
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-velux-blue focus:border-transparent"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
+                Passwort
+              </label>
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="KLF-200 Passwort"
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-velux-blue focus:border-transparent"
+                required
+              />
             </div>
 
             {error && (
@@ -80,7 +110,7 @@ export function TokenSetup({ onComplete }: TokenSetupProps) {
 
             <button
               type="submit"
-              disabled={loading || !token}
+              disabled={loading || !host || !password}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-velux-blue hover:bg-velux-dark text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (

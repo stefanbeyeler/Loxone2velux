@@ -5,42 +5,30 @@ import * as api from './services/api';
 import { RefreshCw } from 'lucide-react';
 
 function App() {
-  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+  const [configured, setConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    checkAuth();
+    checkSetup();
   }, []);
 
-  const checkAuth = async () => {
+  const checkSetup = async () => {
     try {
-      // First check if authentication is required at all
-      const response = await fetch('/api/auth/status');
-      const { required } = await response.json();
-      setAuthRequired(required);
-
-      if (!required) {
-        // No auth required, skip login
-        setAuthenticated(true);
-        setLoading(false);
-        return;
+      const health = await api.getHealth();
+      // If KLF-200 is connected or config has a host, consider it configured
+      if (health.connected) {
+        setConfigured(true);
+      } else {
+        // Check if KLF200 host is set in config
+        try {
+          const config = await api.getConfig();
+          setConfigured(config.klf200.host !== '' && config.klf200.password !== '');
+        } catch {
+          setConfigured(false);
+        }
       }
-
-      // Auth is required - check if we have a valid token
-      const token = localStorage.getItem('api_token');
-      if (!token) {
-        setAuthenticated(false);
-        setLoading(false);
-        return;
-      }
-
-      // Try to fetch nodes to verify token
-      await api.getNodes();
-      setAuthenticated(true);
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      setAuthenticated(false);
+    } catch {
+      setConfigured(false);
     } finally {
       setLoading(false);
     }
@@ -54,11 +42,11 @@ function App() {
     );
   }
 
-  if (!authenticated) {
-    return <TokenSetup onComplete={() => setAuthenticated(true)} />;
+  if (!configured) {
+    return <TokenSetup onComplete={() => setConfigured(true)} />;
   }
 
-  return <Dashboard onLogout={authRequired ? () => setAuthenticated(false) : undefined} />;
+  return <Dashboard />;
 }
 
 export default App;

@@ -13,7 +13,6 @@ import {
   WifiOff,
   Menu,
   X,
-  LogOut,
   Server,
   Settings as SettingsIcon,
 } from 'lucide-react';
@@ -21,11 +20,7 @@ import {
 
 type Tab = 'devices' | 'guide' | 'settings';
 
-interface DashboardProps {
-  onLogout?: () => void;
-}
-
-export function Dashboard({ onLogout }: DashboardProps) {
+export function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('devices');
   const [menuOpen, setMenuOpen] = useState(false);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -116,11 +111,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
     }
   };
 
-  const handleLogout = () => {
-    api.clearApiToken();
-    onLogout?.();
-  };
-
   const isConnected = health?.connected ?? false;
 
   const tabs = [
@@ -173,17 +163,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
               >
                 <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
               </button>
-
-              {/* Logout Button - only show if auth is enabled */}
-              {onLogout && (
-                <button
-                  onClick={handleLogout}
-                  className="hidden sm:flex p-2 text-gray-400 hover:text-red-400 transition-colors"
-                  title="Abmelden"
-                >
-                  <LogOut size={20} />
-                </button>
-              )}
 
               {/* Mobile Menu Toggle */}
               <button
@@ -250,15 +229,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
                   )}
                 </button>
               ))}
-              {onLogout && (
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-gray-700"
-                >
-                  <LogOut size={20} />
-                  Abmelden
-                </button>
-              )}
             </nav>
           )}
         </div>
