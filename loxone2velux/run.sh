@@ -2,14 +2,15 @@
 # ==============================================================================
 # Loxone2Velux Gateway - Startup script
 # Reads HA add-on options from /data/options.json via jq
-# Persistent config at /config/loxone2velux/config.yaml
+# Config at /config/loxone2velux/config.yaml
 # ==============================================================================
 
 echo "=== Loxone2Velux Gateway starting ==="
 
 # Read add-on options from Home Assistant
 OPTIONS_FILE="/data/options.json"
-PERSISTENT_CONFIG="/config/loxone2velux/config.yaml"
+CONFIG_DIR="/config/loxone2velux"
+CONFIG_FILE="${CONFIG_DIR}/config.yaml"
 LISTEN_PORT=8099
 
 if [ -f "$OPTIONS_FILE" ]; then
@@ -33,14 +34,11 @@ else
 fi
 
 echo "KLF-200 host: ${KLF200_HOST}:${KLF200_PORT}"
-echo "Listening on port: ${LISTEN_PORT}"
+echo "Server listening on: 0.0.0.0:${LISTEN_PORT}"
 
-# Create or update persistent config
-mkdir -p /config/loxone2velux
-
-if [ ! -f "${PERSISTENT_CONFIG}" ]; then
-    echo "First run - creating config at ${PERSISTENT_CONFIG}"
-    cat > "${PERSISTENT_CONFIG}" << EOF
+# Always (re)generate config from HA options to avoid stale/corrupt state
+mkdir -p "${CONFIG_DIR}"
+cat > "${CONFIG_FILE}" << EOF
 klf200:
   host: "${KLF200_HOST}"
   port: ${KLF200_PORT}
@@ -59,24 +57,8 @@ logging:
   level: "${LOG_LEVEL}"
   format: "console"
 EOF
-else
-    echo "Updating existing config at ${PERSISTENT_CONFIG}"
-    # Only update values from HA options (preserve any config changes made via Web UI)
-    if [ -n "${KLF200_HOST}" ]; then
-        sed -i "s|^\(  host: \).*|\\1\"${KLF200_HOST}\"|" "${PERSISTENT_CONFIG}"
-    fi
-    if [ -n "${KLF200_PASSWORD}" ]; then
-        sed -i "s|^\(  password: \).*|\\1\"${KLF200_PASSWORD}\"|" "${PERSISTENT_CONFIG}"
-    fi
-    if [ -n "${KLF200_PORT}" ]; then
-        sed -i "s|^\(  port: \)[0-9]*|\\1${KLF200_PORT}|" "${PERSISTENT_CONFIG}"
-    fi
-    if [ -n "${LOG_LEVEL}" ]; then
-        sed -i "s|^\(  level: \).*|\\1\"${LOG_LEVEL}\"|" "${PERSISTENT_CONFIG}"
-    fi
-fi
 
-echo "Configuration ready at ${PERSISTENT_CONFIG}"
+echo "Configuration written to ${CONFIG_FILE}"
 
 # Change to /app so the binary can find web/dist
 cd /app || true
@@ -84,4 +66,4 @@ cd /app || true
 echo "Starting binary..."
 
 # Start the gateway (exec replaces shell with Go binary)
-exec /usr/bin/loxone2velux -config "${PERSISTENT_CONFIG}"
+exec /usr/bin/loxone2velux -config "${CONFIG_FILE}"
