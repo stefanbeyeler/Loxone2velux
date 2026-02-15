@@ -8,18 +8,10 @@ import {
   GatewayConfig,
 } from '../types';
 
-// Resolve the base path for API requests.
-// HA Ingress serves the app at /api/hassio_ingress/<token>/ — relative URLs
-// only work when the browser URL has a trailing slash.  Using the full
-// pathname (with a guaranteed trailing slash) makes requests work regardless.
-function getBasePath(): string {
-  const path = window.location.pathname;
-  return path.endsWith('/') ? path : path + '/';
-}
-
-// Base fetch helper
+// Base fetch helper — uses relative URLs; the Go server injects a <base> tag
+// for HA Ingress so that relative paths resolve correctly.
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(getBasePath() + url, {
+  const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -37,7 +29,7 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 
 // Health check (no auth required)
 export async function getHealth(): Promise<HealthResponse> {
-  const response = await fetch(getBasePath() + 'health');
+  const response = await fetch('health');
   if (!response.ok) {
     throw new Error('Health check failed');
   }

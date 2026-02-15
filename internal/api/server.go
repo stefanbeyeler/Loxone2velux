@@ -136,6 +136,28 @@ func (s *Server) setupRoutes() *chi.Mux {
 	staticDir := "./web/dist"
 	if _, err := os.Stat(staticDir); err == nil {
 		s.logger.Info().Str("dir", staticDir).Msg("Serving static files")
+
+		// Root path: serve index.html with HA Ingress base path injection.
+		// HA Ingress sends X-Ingress-Path header; we inject a <base> tag so
+		// that all relative URLs (API calls, assets) resolve correctly.
+		indexPath := filepath.Join(staticDir, "index.html")
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+			htmlBytes, err := os.ReadFile(indexPath)
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+			html := string(htmlBytes)
+			if ingressPath := req.Header.Get("X-Ingress-Path"); ingressPath != "" {
+				if !strings.HasSuffix(ingressPath, "/") {
+					ingressPath += "/"
+				}
+				html = strings.Replace(html, "<head>", `<head><base href="`+ingressPath+`" />`, 1)
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write([]byte(html))
+		})
+
 		fileServer(r, "/", http.Dir(staticDir))
 	} else {
 		s.logger.Debug().Msg("No static files directory found, skipping frontend")
