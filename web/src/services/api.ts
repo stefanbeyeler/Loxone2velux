@@ -24,6 +24,12 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(error.error || 'API request failed');
   }
 
+  // Detect HTML response (e.g. SPA fallback or wrong proxy route)
+  const ct = response.headers.get('content-type') || '';
+  if (!ct.includes('json')) {
+    throw new Error(`Expected JSON from ${response.url} but got ${ct}`);
+  }
+
   return response.json();
 }
 
@@ -31,7 +37,11 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 export async function getHealth(): Promise<HealthResponse> {
   const response = await fetch('health');
   if (!response.ok) {
-    throw new Error('Health check failed');
+    throw new Error(`Health ${response.status} from ${response.url}`);
+  }
+  const ct = response.headers.get('content-type') || '';
+  if (!ct.includes('json')) {
+    throw new Error(`Health: got ${ct} from ${response.url} (base: ${document.baseURI})`);
   }
   return response.json();
 }
