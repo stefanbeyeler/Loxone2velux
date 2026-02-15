@@ -273,6 +273,26 @@ func (h *Handlers) LoxoneClose(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+// LoxoneGetPosition returns the current position of a node as a plain number (0-100)
+func (h *Handlers) LoxoneGetPosition(w http.ResponseWriter, r *http.Request) {
+	nodeID, err := parseNodeID(r)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("ERROR"))
+		return
+	}
+
+	node, ok := h.gateway.GetNode(nodeID)
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("ERROR"))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(strconv.Itoa(int(node.PositionPercent))))
+}
+
 // LoxoneStop handles Loxone stop requests
 func (h *Handlers) LoxoneStop(w http.ResponseWriter, r *http.Request) {
 	nodeID, err := parseNodeID(r)

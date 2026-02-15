@@ -150,7 +150,31 @@ export function LoxoneGuide() {
           </div>
         </Accordion>
 
-        <Accordion title="3. Sensor-Abfrage (Regen/Wind)">
+        <Accordion title="3. Position abfragen (Virtual HTTP Input)">
+          <div className="space-y-4 text-gray-300">
+            <p>
+              Die aktuelle Position eines Geräts kann als <strong>Virtual HTTP Input</strong> abgefragt werden.
+            </p>
+
+            <div>
+              <h4 className="font-medium text-white mb-2">Position lesen (0-100)</h4>
+              <CodeBlock code={`/loxone/node/<ID>/position${tokenSuffix}`} />
+              <p className="text-sm text-gray-400 mt-2">
+                Rückgabe: Zahl von <code>0</code> (offen) bis <code>100</code> (geschlossen).
+              </p>
+            </div>
+
+            <div className="mt-4 p-3 bg-gray-900 rounded-lg">
+              <p className="text-sm text-gray-400">
+                <span className="text-yellow-400 font-medium">Tipp:</span> In Loxone Config einen <strong>Virtual HTTP Input</strong> erstellen,
+                die URL <code>{gatewayUrl}/loxone/node/0/position</code> eintragen
+                und als Abfrageintervall z.B. 10 Sekunden einstellen.
+              </p>
+            </div>
+          </div>
+        </Accordion>
+
+        <Accordion title="4. Sensor-Abfrage (Regen/Wind)">
           <div className="space-y-4 text-gray-300">
             <p>
               Der KLF-200 kann den Status von Regen- und Windsensoren abfragen. Diese können als Virtual HTTP Input in Loxone eingebunden werden.
@@ -192,7 +216,7 @@ export function LoxoneGuide() {
           </div>
         </Accordion>
 
-        <Accordion title="4. Beispiel: Fenster-Baustein">
+        <Accordion title="5. Beispiel: Fenster-Baustein">
           <div className="space-y-4 text-gray-300">
             <p>
               So verbindest du einen Jalousie-Baustein mit dem Gateway:
@@ -233,7 +257,7 @@ export function LoxoneGuide() {
           </div>
         </Accordion>
 
-        <Accordion title="5. REST API Referenz">
+        <Accordion title="6. REST API Referenz">
           <div className="space-y-4 text-gray-300">
             <p>Vollständige API-Endpunkte:</p>
 
@@ -309,6 +333,11 @@ export function LoxoneGuide() {
                 <tbody className="font-mono">
                   <tr className="border-b border-gray-800">
                     <td className="py-2 text-green-400">GET</td>
+                    <td className="py-2">/loxone/node/&#123;id&#125;/position</td>
+                    <td className="py-2 font-sans text-gray-400">0-100 (Position)</td>
+                  </tr>
+                  <tr className="border-b border-gray-800">
+                    <td className="py-2 text-green-400">GET</td>
                     <td className="py-2">/loxone/node/&#123;id&#125;/set/&#123;pos&#125;</td>
                     <td className="py-2 font-sans text-gray-400">OK / ERROR</td>
                   </tr>
@@ -358,7 +387,7 @@ export function LoxoneGuide() {
           </div>
         </Accordion>
 
-        <Accordion title="6. Troubleshooting">
+        <Accordion title="7. Troubleshooting">
           <div className="space-y-4 text-gray-300">
             <div>
               <h4 className="font-medium text-white mb-2">Gateway nicht erreichbar</h4>

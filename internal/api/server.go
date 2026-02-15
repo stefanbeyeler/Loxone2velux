@@ -138,6 +138,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 		if s.cfg.APIToken != "" {
 			r.Use(NewTokenAuthMiddleware(s.cfg.APIToken, s.logger))
 		}
+		r.Get("/node/{nodeID}/position", h.LoxoneGetPosition)
 		r.Get("/node/{nodeID}/set/{position}", h.LoxoneSetPosition)
 		r.Get("/node/{nodeID}/open", h.LoxoneOpen)
 		r.Get("/node/{nodeID}/close", h.LoxoneClose)
