@@ -300,7 +300,7 @@ export function Dashboard() {
       <footer className="border-t border-gray-800 py-4 mt-8">
         <div className="max-w-6xl mx-auto px-4 text-center text-xs text-gray-500 space-y-1">
           <div>
-            Loxone2Velux Gateway {health?.version ? `v${health.version}` : ''}
+            Loxone2Velux Gateway v{health?.version || __APP_VERSION__}
           </div>
           <div className="text-gray-600">
             &copy; 2026 Stefan Beyeler

@@ -31,7 +31,8 @@ WORKDIR /web
 COPY --from=source /src/web/package*.json ./
 RUN npm install --no-audit --no-fund
 COPY --from=source /src/web/ .
-RUN npm run build
+COPY --from=source /src/VERSION /tmp/VERSION
+RUN VITE_APP_VERSION=$(cat /tmp/VERSION) npm run build
 
 # ============================================================
 # Stage 3: Build Go binary
