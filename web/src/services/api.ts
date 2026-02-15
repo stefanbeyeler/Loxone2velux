@@ -8,10 +8,18 @@ import {
   GatewayConfig,
 } from '../types';
 
-// Base fetch helper — uses relative URLs; the Go server injects a <base> tag
-// for HA Ingress so that relative paths resolve correctly.
+// Build the base path for API requests from the current page URL.
+// HA Ingress can produce double slashes (ingress_entry: / appended to
+// the proxy base path); we collapse them here.
+function getBasePath(): string {
+  let path = window.location.pathname.replace(/\/\/+/g, '/');
+  if (!path.endsWith('/')) path += '/';
+  return path;
+}
+
+// Base fetch helper
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetch(getBasePath() + url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -35,13 +43,13 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 
 // Health check (no auth required)
 export async function getHealth(): Promise<HealthResponse> {
-  const response = await fetch('health');
+  const response = await fetch(getBasePath() + 'health');
   if (!response.ok) {
     throw new Error(`Health ${response.status} from ${response.url}`);
   }
   const ct = response.headers.get('content-type') || '';
   if (!ct.includes('json')) {
-    throw new Error(`Health: got ${ct} from ${response.url} (base: ${document.baseURI})`);
+    throw new Error(`Health: got ${ct} from ${response.url}`);
   }
   return response.json();
 }

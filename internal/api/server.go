@@ -74,6 +74,21 @@ func (s *Server) setupRoutes() *chi.Mux {
 	// Middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
+	// Collapse double slashes in URL paths (HA Ingress can produce them
+	// from ingress_entry: / appended to the proxy base path)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			for strings.Contains(req.URL.Path, "//") {
+				req.URL.Path = strings.ReplaceAll(req.URL.Path, "//", "/")
+			}
+			if req.URL.RawPath != "" {
+				for strings.Contains(req.URL.RawPath, "//") {
+					req.URL.RawPath = strings.ReplaceAll(req.URL.RawPath, "//", "/")
+				}
+			}
+			next.ServeHTTP(w, req)
+		})
+	})
 	r.Use(NewLoggingMiddleware(s.logger))
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(30 * time.Second))
