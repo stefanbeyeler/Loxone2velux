@@ -70,11 +70,16 @@ function Accordion({ title, children, defaultOpen = false }: AccordionProps) {
   );
 }
 
+const DIRECT_PORT = 8099;
+
 export function LoxoneGuide() {
   const token = localStorage.getItem('api_token');
   const hasToken = token && token.length > 0;
   // Show token suffix only if auth is enabled
   const tokenSuffix = hasToken ? `?token=${token}` : '';
+  // Gateway direct address for Loxone (not via HA Ingress)
+  const gatewayHost = window.location.hostname;
+  const gatewayUrl = `http://${gatewayHost}:${DIRECT_PORT}`;
 
   return (
     <div className="space-y-6">
@@ -100,7 +105,7 @@ export function LoxoneGuide() {
             </p>
             <ol className="list-decimal list-inside space-y-2 ml-4">
               <li>Rechtsklick auf "Virtual Outputs" → "Virtuellen HTTP Ausgang hinzufügen"</li>
-              <li>Adresse des Gateways eintragen (z.B. <code className="bg-gray-900 px-2 py-0.5 rounded">http://192.168.1.100:8080</code>)</li>
+              <li>Adresse des Gateways eintragen: <code className="bg-gray-900 px-2 py-0.5 rounded">{gatewayUrl}</code></li>
               <li>Keine Authentifizierung konfigurieren (Token wird per URL übergeben)</li>
             </ol>
           </div>
@@ -358,16 +363,17 @@ export function LoxoneGuide() {
             <div>
               <h4 className="font-medium text-white mb-2">Gateway nicht erreichbar</h4>
               <ul className="list-disc list-inside space-y-1 ml-4 text-gray-400">
-                <li>Prüfe ob der Docker Container läuft: <code>docker compose ps</code></li>
-                <li>Prüfe die Logs: <code>docker compose logs -f</code></li>
-                <li>Stelle sicher, dass Port 8080 erreichbar ist</li>
+                <li>Prüfe ob das Add-on in Home Assistant läuft</li>
+                <li>Prüfe die Add-on Logs in Home Assistant</li>
+                <li>Stelle sicher, dass Port {DIRECT_PORT} von der Loxone erreichbar ist</li>
+                <li>Gateway-Adresse: <code>{gatewayUrl}</code></li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-medium text-white mb-2">KLF-200 nicht verbunden</h4>
               <ul className="list-disc list-inside space-y-1 ml-4 text-gray-400">
-                <li>Überprüfe IP-Adresse und Passwort in config.yaml</li>
+                <li>Überprüfe IP-Adresse und Passwort in den Add-on Einstellungen</li>
                 <li>Das Passwort steht auf der Rückseite des KLF-200</li>
                 <li>Stelle sicher, dass der KLF-200 im selben Netzwerk ist</li>
               </ul>
