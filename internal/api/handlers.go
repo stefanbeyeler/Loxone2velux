@@ -1,7 +1,9 @@
 package api
 
 import (
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -374,9 +376,15 @@ func (h *Handlers) LoxoneWindStatus(w http.ResponseWriter, r *http.Request) {
 
 // ConfigResponse is the JSON structure for config API
 type ConfigResponse struct {
-	KLF200  ConfigKLF200  `json:"klf200"`
-	Server  ConfigServer  `json:"server"`
-	Logging ConfigLogging `json:"logging"`
+	KLF200  ConfigKLF200        `json:"klf200"`
+	Server  ConfigServer        `json:"server"`
+	Loxone  ConfigLoxone        `json:"loxone"`
+	Logging ConfigLogging       `json:"logging"`
+}
+
+type ConfigLoxone struct {
+	UDPFeedback config.UDPFeedbackConfig `json:"udp_feedback"`
+	Mappings    []config.NodeMapping     `json:"mappings"`
 }
 
 type ConfigKLF200 struct {
@@ -418,6 +426,10 @@ func (h *Handlers) GetConfig(w http.ResponseWriter, r *http.Request) {
 			Host:     cfg.Server.Host,
 			Port:     cfg.Server.Port,
 			APIToken: cfg.Server.APIToken,
+		},
+		Loxone: ConfigLoxone{
+			UDPFeedback: cfg.Loxone.UDPFeedback,
+			Mappings:    cfg.Loxone.Mappings,
 		},
 		Logging: ConfigLogging{
 			Level:  cfg.Logging.Level,
@@ -514,4 +526,159 @@ func writeError(w http.ResponseWriter, status int, message, details string) {
 		Code:    status,
 		Details: details,
 	})
+}
+
+// generateUUID generates a random UUID v4
+func generateUUID() string {
+	var uuid [16]byte
+	rand.Read(uuid[:])
+	uuid[6] = (uuid[6] & 0x0f) | 0x40 // version 4
+	uuid[8] = (uuid[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:])
+}
+
+// Mapping CRUD endpoints
+
+// ListMappings returns all node-to-Loxone mappings
+func (h *Handlers) ListMappings(w http.ResponseWriter, r *http.Request) {
+	mappings := h.gateway.GetMappingManager().GetAll()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"mappings": mappings,
+		"count":    len(mappings),
+	})
+}
+
+// CreateMapping creates a new node mapping
+func (h *Handlers) CreateMapping(w http.ResponseWriter, r *http.Request) {
+	var mapping config.NodeMapping
+	if err := json.NewDecoder(r.Body).Decode(&mapping); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	if mapping.LoxoneID == "" {
+		writeError(w, http.StatusBadRequest, "loxone_id is required", "")
+		return
+	}
+
+	mapping.ID = generateUUID()
+	mapping.Enabled = true
+
+	cfg := h.configMgr.GetConfig()
+	cfg.Loxone.Mappings = append(cfg.Loxone.Mappings, mapping)
+	if err := h.configMgr.UpdateConfig(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save mapping", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, mapping)
+}
+
+// UpdateMapping updates an existing mapping
+func (h *Handlers) UpdateMapping(w http.ResponseWriter, r *http.Request) {
+	mappingID := chi.URLParam(r, "mappingID")
+
+	var update config.NodeMapping
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	cfg := h.configMgr.GetConfig()
+	found := false
+	for i, m := range cfg.Loxone.Mappings {
+		if m.ID == mappingID {
+			update.ID = mappingID
+			cfg.Loxone.Mappings[i] = update
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		writeError(w, http.StatusNotFound, "Mapping not found", "")
+		return
+	}
+
+	if err := h.configMgr.UpdateConfig(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save mapping", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, update)
+}
+
+// DeleteMapping deletes a mapping
+func (h *Handlers) DeleteMapping(w http.ResponseWriter, r *http.Request) {
+	mappingID := chi.URLParam(r, "mappingID")
+
+	cfg := h.configMgr.GetConfig()
+	newMappings := make([]config.NodeMapping, 0, len(cfg.Loxone.Mappings))
+	found := false
+
+	for _, m := range cfg.Loxone.Mappings {
+		if m.ID == mappingID {
+			found = true
+			continue
+		}
+		newMappings = append(newMappings, m)
+	}
+
+	if !found {
+		writeError(w, http.StatusNotFound, "Mapping not found", "")
+		return
+	}
+
+	cfg.Loxone.Mappings = newMappings
+	if err := h.configMgr.UpdateConfig(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to delete mapping", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// Loxone config endpoints
+
+// GetLoxoneConfig returns the Loxone-specific configuration
+func (h *Handlers) GetLoxoneConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := h.configMgr.GetConfig()
+	writeJSON(w, http.StatusOK, ConfigLoxone{
+		UDPFeedback: cfg.Loxone.UDPFeedback,
+		Mappings:    cfg.Loxone.Mappings,
+	})
+}
+
+// UpdateLoxoneUDPConfig updates UDP feedback settings
+func (h *Handlers) UpdateLoxoneUDPConfig(w http.ResponseWriter, r *http.Request) {
+	var req config.UDPFeedbackConfig
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	cfg := h.configMgr.GetConfig()
+	cfg.Loxone.UDPFeedback = req
+
+	if err := h.configMgr.UpdateConfig(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save config", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success":      true,
+		"udp_feedback": req,
+	})
+}
+
+// TestUDP sends a test UDP message
+func (h *Handlers) TestUDP(w http.ResponseWriter, r *http.Request) {
+	udpSender := h.gateway.GetUDPSender()
+	if udpSender == nil || !udpSender.IsEnabled() {
+		writeError(w, http.StatusBadRequest, "UDP feedback is not enabled", "")
+		return
+	}
+
+	udpSender.Send("test", "ping", 1)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "test sent"})
 }

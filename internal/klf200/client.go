@@ -30,8 +30,9 @@ type Client struct {
 	sessionID atomic.Uint32
 
 	// Callbacks
-	onNodeUpdate func(*Node)
-	onDisconnect func(error)
+	onNodeUpdate   func(*Node)
+	onSensorUpdate func(SensorStatus)
+	onDisconnect   func(error)
 
 	// Read buffer for SLIP framing
 	readBuf bytes.Buffer
@@ -83,6 +84,11 @@ func (c *Client) UpdateConfig(cfg ClientConfig) {
 // SetNodeUpdateCallback sets the callback for node updates
 func (c *Client) SetNodeUpdateCallback(cb func(*Node)) {
 	c.onNodeUpdate = cb
+}
+
+// SetSensorUpdateCallback sets the callback for sensor status changes
+func (c *Client) SetSensorUpdateCallback(cb func(SensorStatus)) {
+	c.onSensorUpdate = cb
 }
 
 // SetDisconnectCallback sets the callback for disconnection
@@ -445,7 +451,9 @@ func (c *Client) GetLimitationStatus(ctx context.Context, nodeIDs []uint8) ([]*L
 // updateSensorStatus updates the internal sensor status based on limitation data
 func (c *Client) updateSensorStatus(status *LimitationStatus) {
 	c.sensorStatusMu.Lock()
-	defer c.sensorStatusMu.Unlock()
+
+	oldRain := c.sensorStatus.RainDetected
+	oldWind := c.sensorStatus.WindDetected
 
 	c.sensorStatus.LastUpdate = time.Now()
 
@@ -460,6 +468,14 @@ func (c *Client) updateSensorStatus(status *LimitationStatus) {
 	if status.LimitationOrigin == LimitationTypeNone {
 		c.sensorStatus.RainDetected = false
 		c.sensorStatus.WindDetected = false
+	}
+
+	changed := oldRain != c.sensorStatus.RainDetected || oldWind != c.sensorStatus.WindDetected
+	statusCopy := c.sensorStatus
+	c.sensorStatusMu.Unlock()
+
+	if changed && c.onSensorUpdate != nil {
+		c.onSensorUpdate(statusCopy)
 	}
 }
 
@@ -562,6 +578,8 @@ func (c *Client) handleAsyncFrame(frame *Frame) {
 
 		// Check for sensor-related limitations
 		c.sensorStatusMu.Lock()
+		oldRain := c.sensorStatus.RainDetected
+		oldWind := c.sensorStatus.WindDetected
 		c.sensorStatus.LastUpdate = time.Now()
 		switch statusReply {
 		case StatusReplyLimitationByRain:
@@ -571,7 +589,13 @@ func (c *Client) handleAsyncFrame(frame *Frame) {
 			c.sensorStatus.WindDetected = true
 			c.logger.Info().Msg("Wind sensor triggered - wind detected")
 		}
+		sensorChanged := oldRain != c.sensorStatus.RainDetected || oldWind != c.sensorStatus.WindDetected
+		sensorCopy := c.sensorStatus
 		c.sensorStatusMu.Unlock()
+
+		if sensorChanged && c.onSensorUpdate != nil {
+			c.onSensorUpdate(sensorCopy)
+		}
 
 		// Update state based on run status
 		var state NodeState

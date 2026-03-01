@@ -36,6 +36,29 @@ server:
   #   Query:  ?token=<token>
   api_token: "change-me-to-a-secure-random-token"
 
+# Loxone Integration Settings
+loxone:
+  # UDP feedback to Loxone Miniserver
+  # Sends position/state changes as UDP packets
+  # Format: <loxone_id>/<property>:<value>
+  udp_feedback:
+    enabled: false
+    # IP address of the Loxone Miniserver
+    ip: ""
+    # UDP port for virtual UDP inputs (default: 7777)
+    port: 7777
+
+  # Node-to-Loxone mappings
+  # Maps KLF-200 node IDs to Loxone virtual input identifiers
+  # Manage via API: GET/POST /api/mappings
+  mappings: []
+  # Example:
+  # - id: "auto-generated-uuid"
+  #   name: "Living Room Window"
+  #   node_id: 0
+  #   loxone_id: "dachfenster_wohnzimmer"
+  #   enabled: true
+
 # Logging Settings
 logging:
   # Log level: debug, info, warn, error

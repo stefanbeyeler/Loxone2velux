@@ -147,7 +147,7 @@ export function Dashboard() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-white">Loxone2Velux</h1>
-                <p className="text-xs text-gray-400">Gateway Service</p>
+                <p className="text-xs text-gray-400">Gateway Service {health?.version ? `v${health.version}` : ''}</p>
               </div>
             </div>
 

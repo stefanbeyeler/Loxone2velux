@@ -126,6 +126,19 @@ func (s *Server) setupRoutes() *chi.Mux {
 			r.Get("/", h.GetSensorStatus)
 			r.Post("/refresh", h.RefreshSensorStatus)
 		})
+		// Mapping endpoints
+		r.Route("/mappings", func(r chi.Router) {
+			r.Get("/", h.ListMappings)
+			r.Post("/", h.CreateMapping)
+			r.Put("/{mappingID}", h.UpdateMapping)
+			r.Delete("/{mappingID}", h.DeleteMapping)
+		})
+		// Loxone integration config
+		r.Route("/loxone", func(r chi.Router) {
+			r.Get("/config", h.GetLoxoneConfig)
+			r.Put("/config/udp", h.UpdateLoxoneUDPConfig)
+			r.Post("/config/udp/test", h.TestUDP)
+		})
 		// Configuration endpoints
 		r.Get("/config", h.GetConfig)
 		r.Post("/config", h.UpdateConfig)

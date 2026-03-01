@@ -12,6 +12,7 @@ import (
 type Config struct {
 	KLF200  KLF200Config  `yaml:"klf200"`
 	Server  ServerConfig  `yaml:"server"`
+	Loxone  LoxoneConfig  `yaml:"loxone"`
 	Logging LoggingConfig `yaml:"logging"`
 }
 
@@ -39,6 +40,28 @@ type LoggingConfig struct {
 	Format string `yaml:"format"` // "json" or "console"
 }
 
+// LoxoneConfig holds Loxone integration settings
+type LoxoneConfig struct {
+	UDPFeedback UDPFeedbackConfig `yaml:"udp_feedback" json:"udp_feedback"`
+	Mappings    []NodeMapping     `yaml:"mappings" json:"mappings"`
+}
+
+// UDPFeedbackConfig holds UDP feedback settings
+type UDPFeedbackConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	IP      string `yaml:"ip" json:"ip"`
+	Port    int    `yaml:"port" json:"port"`
+}
+
+// NodeMapping maps a KLF-200 node to a Loxone virtual input
+type NodeMapping struct {
+	ID       string `yaml:"id" json:"id"`
+	Name     string `yaml:"name" json:"name"`
+	NodeID   uint8  `yaml:"node_id" json:"node_id"`
+	LoxoneID string `yaml:"loxone_id" json:"loxone_id"`
+	Enabled  bool   `yaml:"enabled" json:"enabled"`
+}
+
 // DefaultConfig returns a config with default values
 func DefaultConfig() *Config {
 	return &Config{
@@ -55,6 +78,14 @@ func DefaultConfig() *Config {
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
 			APIToken:     "",
+		},
+		Loxone: LoxoneConfig{
+			UDPFeedback: UDPFeedbackConfig{
+				Enabled: false,
+				IP:      "",
+				Port:    7777,
+			},
+			Mappings: []NodeMapping{},
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -103,6 +134,14 @@ func (c *Config) Validate() error {
 	// API token is optional - if not set, no authentication required
 	if c.Server.APIToken != "" && len(c.Server.APIToken) < 16 {
 		return fmt.Errorf("server.api_token must be at least 16 characters if set")
+	}
+	if c.Loxone.UDPFeedback.Enabled {
+		if c.Loxone.UDPFeedback.IP == "" {
+			return fmt.Errorf("loxone.udp_feedback.ip is required when UDP feedback is enabled")
+		}
+		if c.Loxone.UDPFeedback.Port <= 0 || c.Loxone.UDPFeedback.Port > 65535 {
+			return fmt.Errorf("loxone.udp_feedback.port must be between 1 and 65535")
+		}
 	}
 	return nil
 }

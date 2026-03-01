@@ -10,14 +10,17 @@ import (
 
 	"github.com/stefanbeyeler/loxone2velux/internal/config"
 	"github.com/stefanbeyeler/loxone2velux/internal/klf200"
+	"github.com/stefanbeyeler/loxone2velux/internal/loxone"
 )
 
 // Service is the main gateway service
 type Service struct {
-	cfg    *config.KLF200Config
-	client *klf200.Client
-	nodes  *klf200.NodeManager
-	logger zerolog.Logger
+	cfg            *config.KLF200Config
+	client         *klf200.Client
+	nodes          *klf200.NodeManager
+	udpSender      *loxone.UDPSender
+	mappingManager *loxone.MappingManager
+	logger         zerolog.Logger
 
 	mu       sync.RWMutex
 	stopChan chan struct{}
@@ -25,7 +28,7 @@ type Service struct {
 }
 
 // NewService creates a new gateway service
-func NewService(cfg *config.KLF200Config, logger zerolog.Logger) *Service {
+func NewService(cfg *config.KLF200Config, loxoneCfg *config.LoxoneConfig, logger zerolog.Logger) *Service {
 	clientCfg := klf200.ClientConfig{
 		Host:     cfg.Host,
 		Port:     cfg.Port,
@@ -33,12 +36,24 @@ func NewService(cfg *config.KLF200Config, logger zerolog.Logger) *Service {
 		Logger:   logger.With().Str("component", "klf200-client").Logger(),
 	}
 
+	udpSender := loxone.NewUDPSender(logger)
+	mappingMgr := loxone.NewMappingManager()
+
+	if loxoneCfg != nil {
+		if err := udpSender.Configure(loxoneCfg.UDPFeedback); err != nil {
+			logger.Error().Err(err).Msg("Failed to configure UDP sender")
+		}
+		mappingMgr.Load(loxoneCfg.Mappings)
+	}
+
 	return &Service{
-		cfg:      cfg,
-		client:   klf200.NewClient(clientCfg),
-		nodes:    klf200.NewNodeManager(),
-		logger:   logger.With().Str("component", "gateway").Logger(),
-		stopChan: make(chan struct{}),
+		cfg:            cfg,
+		client:         klf200.NewClient(clientCfg),
+		nodes:          klf200.NewNodeManager(),
+		udpSender:      udpSender,
+		mappingManager: mappingMgr,
+		logger:         logger.With().Str("component", "gateway").Logger(),
+		stopChan:       make(chan struct{}),
 	}
 }
 
@@ -51,6 +66,7 @@ func (s *Service) Start(ctx context.Context) error {
 
 	// Set callbacks
 	s.client.SetNodeUpdateCallback(s.handleNodeUpdate)
+	s.client.SetSensorUpdateCallback(s.handleSensorUpdate)
 	s.client.SetDisconnectCallback(s.handleDisconnect)
 
 	// Try initial connection (non-blocking on failure)
@@ -159,6 +175,54 @@ func (s *Service) handleNodeUpdate(node *klf200.Node) {
 		Uint8("id", node.ID).
 		Float64("position", node.PositionPercent).
 		Msg("Node position updated")
+
+	s.sendNodeUDPFeedback(node)
+}
+
+// sendNodeUDPFeedback sends position/state updates for a node via UDP
+func (s *Service) sendNodeUDPFeedback(node *klf200.Node) {
+	if !s.udpSender.IsEnabled() {
+		return
+	}
+
+	mapping := s.mappingManager.GetByNodeID(node.ID)
+	if mapping == nil {
+		return
+	}
+
+	id := mapping.LoxoneID
+	s.udpSender.Send(id, "position", int(node.PositionPercent))
+	s.udpSender.Send(id, "target", int(node.TargetPercent))
+	s.udpSender.Send(id, "state", int(node.State))
+}
+
+// handleSensorUpdate handles sensor status changes and sends UDP feedback
+func (s *Service) handleSensorUpdate(status klf200.SensorStatus) {
+	s.logger.Debug().
+		Bool("rain", status.RainDetected).
+		Bool("wind", status.WindDetected).
+		Msg("Sensor status changed")
+
+	if !s.udpSender.IsEnabled() {
+		return
+	}
+
+	rain := 0
+	if status.RainDetected {
+		rain = 1
+	}
+	wind := 0
+	if status.WindDetected {
+		wind = 1
+	}
+
+	for _, mapping := range s.mappingManager.GetAll() {
+		if !mapping.Enabled {
+			continue
+		}
+		s.udpSender.Send(mapping.LoxoneID, "rain", rain)
+		s.udpSender.Send(mapping.LoxoneID, "wind", wind)
+	}
 }
 
 // handleDisconnect handles disconnection
@@ -177,7 +241,19 @@ func (s *Service) Stop() error {
 	close(s.stopChan)
 	s.wg.Wait()
 
+	s.udpSender.Close()
+
 	return s.client.Disconnect()
+}
+
+// GetUDPSender returns the UDP sender
+func (s *Service) GetUDPSender() *loxone.UDPSender {
+	return s.udpSender
+}
+
+// GetMappingManager returns the mapping manager
+func (s *Service) GetMappingManager() *loxone.MappingManager {
+	return s.mappingManager
 }
 
 // IsConnected returns true if connected to KLF-200

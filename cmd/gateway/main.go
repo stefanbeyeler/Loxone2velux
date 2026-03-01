@@ -75,6 +75,16 @@ func (m *ConfigManager) UpdateConfig(cfg *config.Config) error {
 		m.gateway.UpdateConfig(&cfg.KLF200)
 	}
 
+	// Reconfigure UDP sender and mappings
+	if udpSender := m.gateway.GetUDPSender(); udpSender != nil {
+		if err := udpSender.Configure(cfg.Loxone.UDPFeedback); err != nil {
+			m.logger.Error().Err(err).Msg("Failed to reconfigure UDP sender")
+		}
+	}
+	if mappingMgr := m.gateway.GetMappingManager(); mappingMgr != nil {
+		mappingMgr.Load(cfg.Loxone.Mappings)
+	}
+
 	m.cfg = cfg
 	return nil
 }
@@ -126,7 +136,7 @@ func main() {
 		Msg("Starting Loxone2Velux Gateway")
 
 	// Create gateway service
-	gw := gateway.NewService(&cfg.KLF200, logger)
+	gw := gateway.NewService(&cfg.KLF200, &cfg.Loxone, logger)
 
 	// Only start gateway if KLF200 is configured
 	if cfg.IsKLF200Configured() {
