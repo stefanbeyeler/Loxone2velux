@@ -517,7 +517,7 @@ func parseNodeID(r *http.Request) (uint8, error) {
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func writeError(w http.ResponseWriter, status int, message, details string) {
@@ -531,7 +531,9 @@ func writeError(w http.ResponseWriter, status int, message, details string) {
 // generateUUID generates a random UUID v4
 func generateUUID() string {
 	var uuid [16]byte
-	rand.Read(uuid[:])
+	if _, err := rand.Read(uuid[:]); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
 	uuid[6] = (uuid[6] & 0x0f) | 0x40 // version 4
 	uuid[8] = (uuid[8] & 0x3f) | 0x80 // variant 10
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:])
