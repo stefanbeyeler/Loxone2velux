@@ -63,9 +63,12 @@ func (m *NodeManager) UpdateNode(update *Node) {
 	defer m.mu.Unlock()
 
 	if node, ok := m.nodes[update.ID]; ok {
-		node.CurrentPosition = update.CurrentPosition
-		node.PositionPercent = update.PositionPercent
-		if update.TargetPosition != 0 {
+		// Only overwrite position data when the update actually carries it.
+		// State-only notifications (run status) leave PositionValid false and
+		// must not reset the cached position to zero.
+		if update.PositionValid {
+			node.CurrentPosition = update.CurrentPosition
+			node.PositionPercent = update.PositionPercent
 			node.TargetPosition = update.TargetPosition
 			node.TargetPercent = update.TargetPercent
 		}

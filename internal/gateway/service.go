@@ -191,8 +191,12 @@ func (s *Service) sendNodeUDPFeedback(node *klf200.Node) {
 	}
 
 	id := mapping.LoxoneID
-	s.udpSender.Send(id, "position", int(node.PositionPercent))
-	s.udpSender.Send(id, "target", int(node.TargetPercent))
+	// Only forward position/target when the update carries real position data.
+	// State-only updates (run status) would otherwise report a bogus 0%.
+	if node.PositionValid {
+		s.udpSender.Send(id, "position", int(node.PositionPercent))
+		s.udpSender.Send(id, "target", int(node.TargetPercent))
+	}
 	s.udpSender.Send(id, "state", int(node.State))
 }
 

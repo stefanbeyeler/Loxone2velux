@@ -43,6 +43,12 @@ type Client struct {
 	stopChan     chan struct{}
 	wg           sync.WaitGroup
 
+	// exchangeMu serializes request/response exchanges that read from
+	// responseChan (Authenticate, GetAllNodes, SetPosition, Stop,
+	// GetLimitationStatus) so concurrent callers cannot steal each other's
+	// confirmation frames. This is a coarse lock, not per-session demux.
+	exchangeMu sync.Mutex
+
 	// Sensor status
 	sensorStatus   SensorStatus
 	sensorStatusMu sync.RWMutex
@@ -160,9 +166,10 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.conn = conn
 	c.connected.Store(true)
 
-	// Start reader goroutine
+	// Start reader goroutine. Pass the connection explicitly so the loop reads
+	// from a local reference instead of racing with Disconnect setting c.conn = nil.
 	c.wg.Add(1)
-	go c.readLoop()
+	go c.readLoop(conn)
 
 	c.logger.Info().Msg("Connected to KLF-200")
 
@@ -175,14 +182,16 @@ func (c *Client) Authenticate(ctx context.Context) error {
 		return fmt.Errorf("not connected")
 	}
 
+	c.exchangeMu.Lock()
+	defer c.exchangeMu.Unlock()
+
 	c.logger.Debug().Msg("Authenticating with KLF-200")
 
-	// Send password
+	// Send password. Note: the frame embeds the password bytes, so it must
+	// never be logged in cleartext.
 	frame := BuildPasswordEnterRequest(c.password)
 	c.logger.Debug().
-		Hex("frame", frame).
 		Int("len", len(frame)).
-		Str("password", c.password).
 		Msg("Sending password frame")
 
 	if err := c.sendRaw(frame); err != nil {
@@ -233,6 +242,9 @@ func (c *Client) GetAllNodes(ctx context.Context) ([]*Node, error) {
 		return nil, fmt.Errorf("not authenticated")
 	}
 
+	c.exchangeMu.Lock()
+	defer c.exchangeMu.Unlock()
+
 	c.logger.Debug().Msg("Getting all nodes")
 
 	frame := BuildGetAllNodesRequest()
@@ -278,6 +290,9 @@ func (c *Client) SetPosition(ctx context.Context, nodeID uint8, percent float64)
 		return fmt.Errorf("not authenticated")
 	}
 
+	c.exchangeMu.Lock()
+	defer c.exchangeMu.Unlock()
+
 	position := PercentToPosition(percent)
 	sessionID := uint16(c.sessionID.Add(1))
 
@@ -306,7 +321,14 @@ func (c *Client) SetPosition(ctx context.Context, nodeID uint8, percent float64)
 	}
 
 	// Wait for confirmation (GW_COMMAND_SEND_CFM) or error (GW_ERROR_NTF)
-	// Skip async notifications like GW_NODE_STATE_POSITION_CHANGED_NTF
+	return c.waitForCommandConfirm(ctx)
+}
+
+// waitForCommandConfirm waits for a GW_COMMAND_SEND_CFM (or GW_ERROR_NTF)
+// after a command has been sent. Any other (async) frames that slip into the
+// response channel are dispatched via handleAsyncFrame. Callers must hold
+// exchangeMu so confirmations are not consumed by a concurrent exchange.
+func (c *Client) waitForCommandConfirm(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -371,6 +393,9 @@ func (c *Client) Stop(ctx context.Context, nodeID uint8) error {
 		return fmt.Errorf("not authenticated")
 	}
 
+	c.exchangeMu.Lock()
+	defer c.exchangeMu.Unlock()
+
 	sessionID := uint16(c.sessionID.Add(1))
 
 	c.logger.Debug().Uint8("node", nodeID).Msg("Stopping node")
@@ -389,63 +414,47 @@ func (c *Client) Stop(ctx context.Context, nodeID uint8) error {
 		return fmt.Errorf("failed to send command: %w", err)
 	}
 
-	return nil
+	// Wait for confirmation so errors are surfaced and the CFM is not left
+	// dangling in the response channel for a later exchange to misread.
+	return c.waitForCommandConfirm(ctx)
 }
 
-// GetLimitationStatus queries the limitation status for nodes (sensor data)
-func (c *Client) GetLimitationStatus(ctx context.Context, nodeIDs []uint8) ([]*LimitationStatus, error) {
+// GetLimitationStatus requests the limitation status for nodes (sensor data).
+//
+// The resulting GW_LIMITATION_STATUS_NTF notifications are async and are
+// handled directly in readLoop (see isAsyncNotification -> updateSensorStatus),
+// so they never reach responseChan. This method therefore only sends the
+// request, waits for the confirmation, and then allows a short grace period for
+// the notifications to be processed before returning.
+func (c *Client) GetLimitationStatus(ctx context.Context, nodeIDs []uint8) error {
 	if !c.authenticated.Load() {
-		return nil, fmt.Errorf("not authenticated")
+		return fmt.Errorf("not authenticated")
 	}
+
+	c.exchangeMu.Lock()
+	defer c.exchangeMu.Unlock()
 
 	sessionID := uint16(c.sessionID.Add(1))
 
 	c.logger.Debug().Interface("nodes", nodeIDs).Msg("Getting limitation status")
 
-	// Request both min and max limitations
 	frame := BuildGetLimitationStatusRequest(sessionID, nodeIDs, 0) // 0 = min limitation
 	if err := c.sendRaw(frame); err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return fmt.Errorf("failed to send request: %w", err)
 	}
 
 	// Wait for confirmation
-	_, err := c.waitForResponse(ctx, GW_GET_LIMITATION_STATUS_CFM, 5*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get confirmation: %w", err)
+	if _, err := c.waitForResponse(ctx, GW_GET_LIMITATION_STATUS_CFM, 5*time.Second); err != nil {
+		return fmt.Errorf("failed to get confirmation: %w", err)
 	}
 
-	// Collect limitation notifications
-	var limitations []*LimitationStatus
-	for {
-		resp, err := c.waitForResponse(ctx, 0, 2*time.Second)
-		if err != nil {
-			// Timeout means no more notifications
-			break
-		}
-
-		if resp.Command == GW_LIMITATION_STATUS_NTF {
-			status, err := ParseLimitationStatusNotification(resp.Data)
-			if err != nil {
-				c.logger.Warn().Err(err).Msg("Failed to parse limitation status")
-				continue
-			}
-
-			c.logger.Debug().
-				Uint8("nodeID", status.NodeID).
-				Uint8("origin", uint8(status.LimitationOrigin)).
-				Str("originStr", status.LimitationOrigin.String()).
-				Uint16("minValue", status.MinValue).
-				Uint16("maxValue", status.MaxValue).
-				Msg("Limitation status received")
-
-			limitations = append(limitations, status)
-
-			// Update sensor status based on limitation origin
-			c.updateSensorStatus(status)
-		}
+	// Allow the async GW_LIMITATION_STATUS_NTF notifications to be processed.
+	select {
+	case <-ctx.Done():
+	case <-time.After(1 * time.Second):
 	}
 
-	return limitations, nil
+	return nil
 }
 
 // updateSensorStatus updates the internal sensor status based on limitation data
@@ -489,7 +498,7 @@ func (c *Client) GetSensorStatus() SensorStatus {
 // RefreshSensorStatus queries all nodes for limitation status to update sensor readings
 // Returns nil even on timeout - the sensor status will keep its last known values
 func (c *Client) RefreshSensorStatus(ctx context.Context, nodeIDs []uint8) error {
-	_, err := c.GetLimitationStatus(ctx, nodeIDs)
+	err := c.GetLimitationStatus(ctx, nodeIDs)
 	if err != nil {
 		// Log the error but don't fail - limitation status may not be supported
 		// by all KLF-200 firmware versions or may timeout
@@ -559,6 +568,7 @@ func (c *Client) handleAsyncFrame(frame *Frame) {
 				PositionPercent: PositionToPercent(position),
 				TargetPosition:  target,
 				TargetPercent:   PositionToPercent(target),
+				PositionValid:   true,
 				LastUpdate:      time.Now(),
 			})
 		}
@@ -640,8 +650,10 @@ func (c *Client) isAsyncNotification(cmd CommandID) bool {
 	}
 }
 
-// readLoop continuously reads from the TLS connection and extracts SLIP frames
-func (c *Client) readLoop() {
+// readLoop continuously reads from the TLS connection and extracts SLIP frames.
+// It uses the connection passed at startup rather than c.conn so it does not
+// race with Disconnect, which sets c.conn = nil.
+func (c *Client) readLoop(conn *tls.Conn) {
 	defer c.wg.Done()
 
 	buf := make([]byte, 1024)
@@ -655,9 +667,9 @@ func (c *Client) readLoop() {
 		default:
 		}
 
-		c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
-		n, err := c.conn.Read(buf)
+		n, err := conn.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				c.logger.Info().Msg("Connection closed by KLF-200")

@@ -271,33 +271,6 @@ func BuildHouseStatusMonitorEnableRequest() []byte {
 	return EncodeFrame(GW_HOUSE_STATUS_MONITOR_ENABLE_REQ, nil)
 }
 
-// BuildStatusRequest creates a status request for specific nodes
-func BuildStatusRequest(sessionID uint16, nodeIDs []uint8) []byte {
-	buf := new(bytes.Buffer)
-
-	// Session ID
-	binary.Write(buf, binary.BigEndian, sessionID)
-
-	// Index array count
-	buf.WriteByte(byte(len(nodeIDs)))
-
-	// Node IDs (max 20)
-	for _, id := range nodeIDs {
-		buf.WriteByte(id)
-	}
-	for i := len(nodeIDs); i < 20; i++ {
-		buf.WriteByte(0)
-	}
-
-	// Status type (0 = request target position)
-	buf.WriteByte(0x00)
-
-	// Functional parameter (0 = main info)
-	buf.WriteByte(0x00)
-
-	return EncodeFrame(GW_STATUS_REQUEST_REQ, buf.Bytes())
-}
-
 // ParsePasswordConfirm parses password confirmation response
 func ParsePasswordConfirm(data []byte) (bool, error) {
 	if len(data) < 1 {
@@ -334,7 +307,8 @@ func ParseNodeInformation(data []byte) (*Node, error) {
 	}
 
 	node := &Node{
-		ID: data[0],
+		ID:            data[0],
+		PositionValid: true,
 	}
 
 	// Name (64 bytes at offset 4, null-terminated UTF-8)
@@ -365,19 +339,6 @@ func ParseNodeInformation(data []byte) (*Node, error) {
 	node.TargetPercent = PositionToPercent(node.TargetPosition)
 
 	return node, nil
-}
-
-// ParseNodeStatePositionChanged parses position change notification (legacy)
-func ParseNodeStatePositionChanged(data []byte) (nodeID uint8, position uint16, err error) {
-	if len(data) < 6 {
-		return 0, 0, ErrFrameTooShort
-	}
-
-	nodeID = data[0]
-	// State at offset 1
-	position = binary.BigEndian.Uint16(data[2:4])
-
-	return nodeID, position, nil
 }
 
 // ParseNodeStatePositionChangedFull parses position change notification with all fields
@@ -460,18 +421,6 @@ func BuildGetLimitationStatusRequest(sessionID uint16, nodeIDs []uint8, limitati
 	return EncodeFrame(GW_GET_LIMITATION_STATUS_REQ, buf.Bytes())
 }
 
-// ParseLimitationStatusConfirm parses the confirmation of limitation status request
-func ParseLimitationStatusConfirm(data []byte) (sessionID uint16, status ResponseStatus, err error) {
-	if len(data) < 3 {
-		return 0, 0, ErrFrameTooShort
-	}
-
-	sessionID = binary.BigEndian.Uint16(data[0:2])
-	status = ResponseStatus(data[2])
-
-	return sessionID, status, nil
-}
-
 // ParseLimitationStatusNotification parses the limitation status notification
 // Frame structure:
 // - SessionID: 2 bytes @ 0
@@ -495,22 +444,4 @@ func ParseLimitationStatusNotification(data []byte) (*LimitationStatus, error) {
 	}
 
 	return status, nil
-}
-
-// StatusReplyToLimitationType converts a StatusReply limitation code to LimitationType
-func StatusReplyToLimitationType(reply StatusReply) LimitationType {
-	switch reply {
-	case StatusReplyLimitationByRain:
-		return LimitationTypeRain
-	case StatusReplyLimitationByWind:
-		return LimitationTypeWind
-	case StatusReplyLimitationByTimer:
-		return LimitationTypeTime
-	case StatusReplyLimitationByUser, StatusReplyLimitationByLocalUser:
-		return LimitationTypeUser
-	case StatusReplyLimitationByEmergency:
-		return LimitationTypeEmergency
-	default:
-		return LimitationTypeUnknown
-	}
 }
