@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -23,26 +24,29 @@ var version = "dev"
 type ConfigManager struct {
 	cfg        *config.Config
 	configPath string
+	loxonePath string
 	gateway    *gateway.Service
 	mu         sync.RWMutex
 	logger     zerolog.Logger
 }
 
 // NewConfigManager creates a new ConfigManager
-func NewConfigManager(cfg *config.Config, configPath string, gw *gateway.Service, logger zerolog.Logger) *ConfigManager {
+func NewConfigManager(cfg *config.Config, configPath, loxonePath string, gw *gateway.Service, logger zerolog.Logger) *ConfigManager {
 	return &ConfigManager{
 		cfg:        cfg,
 		configPath: configPath,
+		loxonePath: loxonePath,
 		gateway:    gw,
 		logger:     logger,
 	}
 }
 
-// GetConfig returns the current configuration
+// GetConfig returns a copy of the current configuration. A copy is returned so
+// callers (HTTP handlers) can mutate it freely without racing on the shared config.
 func (m *ConfigManager) GetConfig() *config.Config {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.cfg
+	return m.cfg.Clone()
 }
 
 // GetConfigPath returns the path to the config file
@@ -68,11 +72,31 @@ func (m *ConfigManager) UpdateConfig(cfg *config.Config) error {
 		m.logger.Info().Str("path", m.configPath).Msg("Configuration saved")
 	}
 
-	// Update gateway config if KLF-200 settings changed
-	if m.cfg.KLF200.Host != cfg.KLF200.Host ||
+	// Persist the UI-managed Loxone settings to the sidecar file so they
+	// survive add-on restarts (which regenerate config.yaml from add-on options).
+	if m.loxonePath != "" {
+		if err := config.SaveLoxoneConfig(m.loxonePath, &cfg.Loxone); err != nil {
+			m.logger.Error().Err(err).Msg("Failed to save Loxone sidecar config")
+		} else {
+			m.logger.Info().Str("path", m.loxonePath).Msg("Loxone configuration saved")
+		}
+	}
+
+	// Update gateway config and reconnect if KLF-200 settings changed
+	klfChanged := m.cfg.KLF200.Host != cfg.KLF200.Host ||
 		m.cfg.KLF200.Port != cfg.KLF200.Port ||
-		m.cfg.KLF200.Password != cfg.KLF200.Password {
+		m.cfg.KLF200.Password != cfg.KLF200.Password
+	if klfChanged {
 		m.gateway.UpdateConfig(&cfg.KLF200)
+		// Reconnect in the background so the new credentials take effect without
+		// blocking the HTTP response.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := m.gateway.Reconnect(ctx); err != nil {
+				m.logger.Warn().Err(err).Msg("Reconnect after config change failed")
+			}
+		}()
 	}
 
 	// Reconfigure UDP sender and mappings
@@ -100,7 +124,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Load configuration
+	// Load configuration. config.Load already validates the file; the
+	// defaults-from-env path below is validated explicitly.
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		// Try to use defaults if config file doesn't exist
@@ -113,20 +138,29 @@ func main() {
 			if password := os.Getenv("KLF200_PASSWORD"); password != "" {
 				cfg.KLF200.Password = password
 			}
+			if err := cfg.Validate(); err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: Invalid configuration: %s\n", err.Error())
+				os.Exit(1)
+			}
 		} else {
 			fmt.Fprintf(os.Stderr, "ERROR: Failed to load configuration: %s\n", err.Error())
 			os.Exit(1)
 		}
 	}
 
-	// Validate config
-	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: Invalid configuration: %s\n", err.Error())
-		os.Exit(1)
-	}
-
 	// Setup logger
 	logger := setupLogger(cfg.Logging)
+
+	// Overlay the UI-managed Loxone settings from the sidecar file, if present.
+	// This is kept separate from config.yaml so mappings and UDP feedback
+	// survive Home Assistant add-on restarts that regenerate config.yaml.
+	loxonePath := filepath.Join(filepath.Dir(*configPath), "loxone.yaml")
+	if lc, lerr := config.LoadLoxoneConfig(loxonePath); lerr == nil {
+		cfg.Loxone = *lc
+		logger.Info().Str("path", loxonePath).Msg("Loaded Loxone configuration from sidecar")
+	} else if !os.IsNotExist(lerr) {
+		logger.Warn().Err(lerr).Str("path", loxonePath).Msg("Failed to load Loxone sidecar config")
+	}
 
 	logger.Info().
 		Str("version", version).
@@ -150,7 +184,7 @@ func main() {
 	}
 
 	// Create config manager
-	configMgr := NewConfigManager(cfg, *configPath, gw, logger)
+	configMgr := NewConfigManager(cfg, *configPath, loxonePath, gw, logger)
 
 	// Create and start API server
 	server := api.NewServer(&cfg.Server, gw, logger, configMgr, version)

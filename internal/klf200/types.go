@@ -272,6 +272,11 @@ type Node struct {
 	Velocity      Velocity   `json:"velocity"`
 	LastUpdate    time.Time  `json:"last_update"`
 	Inverted      bool       `json:"inverted"` // true for window openers (0%=closed, 100%=open)
+
+	// PositionValid indicates that CurrentPosition/TargetPosition carry real
+	// data. State-only updates (e.g. from GW_COMMAND_RUN_STATUS_NTF) leave it
+	// false so the cached position is not overwritten with zeros.
+	PositionValid bool `json:"-"`
 }
 
 // IsInvertedType returns true for node types where position semantics are inverted

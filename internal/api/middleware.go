@@ -36,12 +36,18 @@ func NewLoggingMiddleware(logger zerolog.Logger) func(http.Handler) http.Handler
 	}
 }
 
-// CORSMiddleware adds CORS headers
+// CORSMiddleware adds CORS headers. The bundled web UI is served same-origin
+// (directly or via HA Ingress) and Loxone/Miniserver calls are server-side, so
+// CORS only applies to browser cross-origin requests. We reflect the request's
+// Origin (with Vary: Origin) instead of advertising a blanket "*" wildcard.
 func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
+		if origin := r.Header.Get("Origin"); origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
+		}
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)

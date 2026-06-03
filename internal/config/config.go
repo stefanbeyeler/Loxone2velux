@@ -164,3 +164,46 @@ func (c *Config) Save(path string) error {
 
 	return nil
 }
+
+// Clone returns a deep copy of the configuration. Callers can mutate the copy
+// without affecting the shared config held by the ConfigManager.
+func (c *Config) Clone() *Config {
+	cp := *c
+	if c.Loxone.Mappings != nil {
+		cp.Loxone.Mappings = make([]NodeMapping, len(c.Loxone.Mappings))
+		copy(cp.Loxone.Mappings, c.Loxone.Mappings)
+	}
+	return &cp
+}
+
+// LoadLoxoneConfig loads the UI-managed Loxone configuration (mappings and UDP
+// feedback) from a sidecar file. This is kept separate from the main config so
+// it survives Home Assistant add-on restarts, which regenerate config.yaml from
+// the add-on options on every boot.
+func LoadLoxoneConfig(path string) (*LoxoneConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var lc LoxoneConfig
+	if err := yaml.Unmarshal(data, &lc); err != nil {
+		return nil, fmt.Errorf("failed to parse loxone config: %w", err)
+	}
+
+	return &lc, nil
+}
+
+// SaveLoxoneConfig persists the UI-managed Loxone configuration to its sidecar file.
+func SaveLoxoneConfig(path string, lc *LoxoneConfig) error {
+	data, err := yaml.Marshal(lc)
+	if err != nil {
+		return fmt.Errorf("failed to marshal loxone config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write loxone config: %w", err)
+	}
+
+	return nil
+}

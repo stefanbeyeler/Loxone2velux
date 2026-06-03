@@ -529,12 +529,14 @@ func writeError(w http.ResponseWriter, status int, message, details string) {
 }
 
 // generateUUID generates a random UUID v4
-func generateUUID() string {
+func generateUUID() (string, error) {
 	var uuid [16]byte
-	rand.Read(uuid[:])
+	if _, err := rand.Read(uuid[:]); err != nil {
+		return "", err
+	}
 	uuid[6] = (uuid[6] & 0x0f) | 0x40 // version 4
 	uuid[8] = (uuid[8] & 0x3f) | 0x80 // variant 10
-	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:])
+	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:]), nil
 }
 
 // Mapping CRUD endpoints
@@ -561,7 +563,12 @@ func (h *Handlers) CreateMapping(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mapping.ID = generateUUID()
+	id, err := generateUUID()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate mapping ID", err.Error())
+		return
+	}
+	mapping.ID = id
 	mapping.Enabled = true
 
 	cfg := h.configMgr.GetConfig()
